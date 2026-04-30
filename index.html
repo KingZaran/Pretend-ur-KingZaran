@@ -6,6 +6,7 @@
 <title>Cards Against Everyone</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
   :root {
     --black: #0a0a0a;
@@ -404,7 +405,13 @@
   <div class="room-code-display">
     <p class="label">Room Code</p>
     <p class="code" id="display-room-code">----</p>
-    <p class="sublabel">Share this code with friends</p>
+    <p class="sublabel">Share this code, link, or QR with friends</p>
+    <div style="margin-top:1rem;display:flex;gap:0.5rem;align-items:center;">
+      <input type="text" id="invite-link-input" readonly onclick="this.select()"
+        style="font-size:0.65rem;padding:0.5rem 0.75rem;flex:1;color:var(--light);cursor:text;">
+      <button class="btn secondary" onclick="copyInviteLink()" style="width:auto;font-size:0.85rem;padding:0.5rem 1rem;">Copy Link</button>
+    </div>
+    <div id="qr-container" style="margin-top:1rem;display:flex;justify-content:center;padding:1rem;background:white;border-radius:10px;"></div>
   </div>
 
   <div class="player-list">
@@ -414,7 +421,7 @@
 
   <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:0.75rem;">
     <button class="btn" id="start-btn" onclick="startGame()" style="display:none">Start Game</button>
-    <p class="loading" id="waiting-status">Waiting for host to start...</p>
+    <p class="loading" id="waiting-status"></p>
   </div>
 </div>
 
@@ -715,6 +722,7 @@ async function hostGame() {
 
   showError('lobby-error', '');
   gameState = state;
+  saveSession();
   showWaiting();
   subscribeToRoom();
 }
@@ -730,9 +738,10 @@ async function joinGame() {
   const { data, error } = await sbClient.from('game_rooms').select('*').eq('code', code).single();
   if (error || !data) return showError('lobby-error', 'Room not found. Check the code.');
   if (data.state.phase !== 'waiting') return showError('lobby-error', 'Game already in progress.');
+  if (data.state.players.some(p => p.name.toLowerCase() === myName.toLowerCase()))
+    return showError('lobby-error', '❌ That name is already taken — pick another.');
 
-  myPlayerId = crypto.randomUUID();
-  roomCode = code;
+  myPlayerId = crypto.randomUUID();  roomCode = code;
   isHost = false;
 
   const state = data.state;
@@ -742,13 +751,15 @@ async function joinGame() {
   await sbClient.from('game_rooms').update({ state }).eq('code', roomCode);
 
   gameState = state;
+  saveSession();
   showWaiting();
   subscribeToRoom();
 }
 
 // ── SUBSCRIBE ──
 function subscribeToRoom() {
-  channel = supabase
+  if (channel) sbClient.removeChannel(channel);
+  channel = sbClient
     .channel('room-' + roomCode)
     .on('postgres_changes', {
       event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `code=eq.${roomCode}`
@@ -767,6 +778,7 @@ async function pushState() {
 // ── WAITING ROOM ──
 function showWaiting() {
   document.getElementById('display-room-code').textContent = roomCode;
+  setupInviteUI();
   renderWaiting();
   showScreen('waiting');
 }
@@ -779,17 +791,21 @@ function renderWaiting() {
       <span class="dot"></span>
       <span>${p.name}</span>
       ${p.isHost ? '<span class="czar-badge">HOST</span>' : ''}
+      ${p.id === myPlayerId ? '<span class="czar-badge" style="background:#2a6;">YOU</span>' : ''}
     </div>
   `).join('');
 
   const startBtn = document.getElementById('start-btn');
   const waitStatus = document.getElementById('waiting-status');
+  const count = gameState.players.length;
   if (isHost) {
     startBtn.style.display = 'block';
-    waitStatus.textContent = gameState.players.length < 3
-      ? `Need at least 3 players (${gameState.players.length}/3 joined)`
-      : 'Ready to start!';
-    startBtn.disabled = gameState.players.length < 2;
+    startBtn.disabled = count < 2;
+    waitStatus.textContent = count < 2
+      ? `Need at least 2 players (${count}/2 joined)`
+      : `${count} player(s) ready — start whenever!`;
+  } else {
+    waitStatus.textContent = `${count} player(s) in room. Waiting for host to start...`;
   }
 }
 
@@ -1055,8 +1071,64 @@ async function nextRound() {
   await pushState();
 }
 
+// ── SESSION PERSISTENCE ──
+function saveSession() {
+  sessionStorage.setItem('cae_id', myPlayerId);
+  sessionStorage.setItem('cae_name', myName);
+  sessionStorage.setItem('cae_room', roomCode);
+  sessionStorage.setItem('cae_host', isHost ? '1' : '0');
+}
+function clearSession() {
+  ['cae_id','cae_name','cae_room','cae_host'].forEach(k => sessionStorage.removeItem(k));
+}
+async function tryResumeSession() {
+  const savedId   = sessionStorage.getItem('cae_id');
+  const savedName = sessionStorage.getItem('cae_name');
+  const savedRoom = sessionStorage.getItem('cae_room');
+  const savedHost = sessionStorage.getItem('cae_host') === '1';
+  if (!savedId || !savedRoom) return false;
+  initSupabase();
+  const { data, error } = await sbClient.from('game_rooms').select('*').eq('code', savedRoom).single();
+  if (error || !data) { clearSession(); return false; }
+  if (!data.state.players.find(p => p.id === savedId)) { clearSession(); return false; }
+  myPlayerId = savedId; myName = savedName; roomCode = savedRoom; isHost = savedHost;
+  gameState = data.state;
+  subscribeToRoom();
+  if (gameState.phase === 'waiting') { showWaiting(); }
+  else { showScreen('game'); render(); }
+  toast('Welcome back, ' + myName + '!');
+  return true;
+}
+
+// ── INVITE LINK + QR ──
+function getInviteUrl() {
+  return window.location.href.split('?')[0] + '?room=' + roomCode;
+}
+function setupInviteUI() {
+  const url = getInviteUrl();
+  const input = document.getElementById('invite-link-input');
+  if (input) input.value = url;
+  const qrEl = document.getElementById('qr-container');
+  if (qrEl) {
+    qrEl.innerHTML = '';
+    new QRCode(qrEl, { text: url, width: 150, height: 150, colorDark: '#0a0a0a', colorLight: '#ffffff' });
+  }
+}
+function copyInviteLink() {
+  navigator.clipboard.writeText(getInviteUrl())
+    .then(() => toast('Invite link copied!'))
+    .catch(() => { document.getElementById('invite-link-input').select(); document.execCommand('copy'); toast('Link copied!'); });
+}
+
 // ── BOOT ──
-render();
+(async () => {
+  // Pre-fill room code if joining via invite link
+  const urlRoom = new URLSearchParams(window.location.search).get('room');
+  if (urlRoom) document.getElementById('room-code-input').value = urlRoom.toUpperCase();
+
+  const resumed = await tryResumeSession();
+  if (!resumed) { render(); }
+})();
 
 // Expose functions globally for onclick= attributes
 window.hostGame = hostGame;
@@ -1066,6 +1138,7 @@ window.nextRound = nextRound;
 window.toggleCard = toggleCard;
 window.pickWinner = pickWinner;
 window.submitCards = submitCards;
+window.copyInviteLink = copyInviteLink;
 </script>
 </body>
 </html>
