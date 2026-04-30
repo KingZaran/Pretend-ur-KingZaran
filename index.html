@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="google-site-verification" content="WcQgtDIQGivwwIGqB-zyAsv0BNRQe_7Mou0CWzBSFLM" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Pretend You're KingZaran</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -20,6 +20,7 @@
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { overflow-x: hidden; }
 
   body {
     background: var(--black);
@@ -27,6 +28,7 @@
     font-family: 'DM Sans', sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+    max-width: 100vw;
   }
 
   /* ── NOISE OVERLAY ── */
@@ -170,15 +172,17 @@
     background: var(--grey);
     border-radius: 10px;
     flex-wrap: wrap; gap: 0.5rem;
+    min-width: 0;
+    overflow: hidden;
   }
   .top-bar .room-pill {
     font-family: 'DM Mono', monospace; font-size: 0.75rem;
     background: var(--black); border-radius: 4px; padding: 4px 10px; color: var(--light);
   }
   .top-bar .round-info { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 0.05em; }
-  .score-list { display: flex; gap: 1rem; font-size: 0.8rem; flex-wrap: wrap; }
-  .score-item { color: var(--light); }
-  .score-item span { color: var(--white); font-weight: 600; }
+  .score-list { display: flex; gap: 1rem; font-size: 0.8rem; flex-wrap: wrap; align-items: center; }
+  .score-item { color: var(--light); font-size: 0.75rem; }
+  .score-item span { color: var(--white); font-weight: 700; font-size: 1.05rem; font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
 
   .game-center {
     display: grid;
@@ -358,6 +362,15 @@
   .ps-played  { background:#2a6; color:#fff; }
   .ps-you   { background:#1a5276; color:#aef; }
   .ps-winner { background:#b7950b; color:#fff; }
+
+  @media (max-width: 480px) {
+    .game-layout { padding: 0; }
+    .top-bar .room-pill { display: none; }
+    #game { padding: 0.5rem; }
+    .screen { padding: 1rem; }
+    .room-code-display { padding: 1rem; }
+    .white-card { min-width: 100px; font-size: 0.78rem; }
+  }
 </style>
 </head>
 <body>
@@ -394,6 +407,16 @@
       <input type="text" id="player-name" placeholder="Enter your name" maxlength="20" autocomplete="off">
     </div>
 
+    <div class="input-group">
+      <label>Win condition</label>
+      <select id="win-target" style="background:var(--grey);border:1px solid #333;border-radius:6px;color:var(--white);font-family:'DM Mono',monospace;font-size:0.95rem;padding:0.75rem 1rem;outline:none;width:100%;cursor:pointer;">
+        <option value="5">First to 5 points</option>
+        <option value="7">First to 7 points</option>
+        <option value="10" selected>First to 10 points</option>
+        <option value="15">First to 15 points</option>
+        <option value="999">Endless (no limit)</option>
+      </select>
+    </div>
     <button class="btn" onclick="hostGame()">Host a Game</button>
 
     <div class="divider">or join existing</div>
@@ -443,7 +466,7 @@
 
     <div class="top-bar">
       <span class="room-pill">ROOM CODE: <span id="game-room-code">----</span></span>
-      <span class="round-info">Round <span id="round-num">1</span></span>
+      <span class="round-info">Round <span id="round-num">1</span> · First to <span id="win-target-display">10</span></span>
       <div class="score-list" id="score-display"></div>
       <button class="btn secondary" onclick="leaveGame()" style="width:auto;font-size:0.85rem;padding:0.4rem 0.9rem;">Leave</button>
     </div>
@@ -701,6 +724,7 @@ async function hostGame() {
   if (!initSupabase()) return;
   myName = document.getElementById('player-name').value.trim();
   if (!myName) return showError('lobby-error', 'Enter your name first.');
+  rememberName(myName);
 
   showError('lobby-error', 'Creating room...');
   myPlayerId = crypto.randomUUID();
@@ -715,6 +739,7 @@ async function hostGame() {
     hand: whiteDeck.splice(0, HAND_SIZE), isHost: true
   }];
 
+  const winTarget = parseInt(document.getElementById('win-target')?.value || '10');
   const state = {
     room: roomCode,
     phase: 'waiting',
@@ -726,6 +751,7 @@ async function hostGame() {
     players,
     submissions: [],
     winnerId: null,
+    winTarget,
   };
 
   try {
@@ -749,10 +775,12 @@ async function joinGame() {
   const code = document.getElementById('room-code-input').value.trim().toUpperCase();
   if (!myName) return showError('lobby-error', 'Enter your name first.');
   if (code.length !== 4) return showError('lobby-error', 'Enter a 4-letter room code.');
+  rememberName(myName);
 
   const { data, error } = await sbClient.from('game_rooms').select('*').eq('code', code).single();
   if (error || !data) return showError('lobby-error', 'Room not found. Check the code.');
-  if (data.state.phase !== 'waiting') return showError('lobby-error', 'Game already in progress.');
+  // Allow joining mid-game — just deal them a hand from the deck
+  const joiningMidGame = data.state.phase !== 'waiting';
   if (data.state.players.some(p => p.name.toLowerCase() === myName.toLowerCase()))
     return showError('lobby-error', '❌ That name is already taken! Pick another name.');
 
@@ -761,7 +789,8 @@ async function joinGame() {
 
   const state = data.state;
   const hand = state.whiteDeck.splice(0, HAND_SIZE);
-  state.players.push({ id: myPlayerId, name: myName, score: 0, hand, isHost: false });
+  state.players.push({ id: myPlayerId, name: myName, score: 0, hand, isHost: false, joinedMidGame: joiningMidGame });
+  if (joiningMidGame) toast('Joined mid-game! You\'ll play from the next card submission.');
 
   await sbClient.from('game_rooms').update({ state }).eq('code', roomCode);
 
@@ -807,11 +836,25 @@ function subscribeToRoom() {
           return;
         }
 
+        // If the leaver was the czar, advance to next valid czar
+        const czar = gameState.players[gameState.czarIndex % Math.max(gameState.players.length, 1)];
+        if (czar === undefined || leaving.id === czar?.id) {
+          // clamp czarIndex to valid range
+          gameState.czarIndex = gameState.czarIndex % Math.max(gameState.players.length, 1);
+          if (gameState.phase === 'playing' || gameState.phase === 'judging') {
+            // Remove submissions from the leaving player and restart the round cleanly
+            gameState.submissions = gameState.submissions.filter(s => s.playerId !== leaving.id);
+            // If we were in judging and czar left, go back to playing so new czar can judge
+            if (gameState.phase === 'judging') gameState.phase = 'playing';
+            toast('The Card Czar left — round restarting with new Czar.');
+          }
+        }
+
         // If the leaver was host, assign a new one
         if (leaving.isHost && gameState.players.length > 0) {
           const newHost = gameState.players[Math.floor(Math.random() * gameState.players.length)];
           newHost.isHost = true;
-          if (gameState.phase !== 'waiting') {
+          if (gameState.phase !== 'waiting' && gameState.phase !== 'playing' && gameState.phase !== 'judging') {
             gameState.phase = 'waiting';
             gameState.submissions = [];
             gameState.winnerId = null;
@@ -867,14 +910,16 @@ function renderWaiting() {
   const startBtn = document.getElementById('start-btn');
   const waitStatus = document.getElementById('waiting-status');
   const count = gameState.players.length;
+  const wt = gameState.winTarget || 10;
+  const wtLabel = wt >= 999 ? 'Endless mode' : `First to ${wt} points wins`;
   if (isHost) {
     startBtn.style.display = 'block';
     startBtn.disabled = count < 3;
     waitStatus.textContent = count < 3
-      ? `Need at least 3 players (${count}/3 joined)`
-      : `${count} player(s) ready — start whenever!`;
+      ? `Need at least 3 players (${count}/3 joined) · ${wtLabel}`
+      : `${count} player(s) ready · ${wtLabel}`;
   } else {
-    waitStatus.textContent = `${count} player(s) in room. Waiting for host to start...`;
+    waitStatus.textContent = `${count} player(s) · ${wtLabel} · Waiting for host to start...`;
   }
 }
 
@@ -895,6 +940,11 @@ function render() {
     return;
   }
 
+  if (gameState.phase === 'gameover') {
+    if (!document.getElementById('game').classList.contains('active')) showScreen('game');
+    showGameOver();
+    return;
+  }
   // Always ensure we're on the game screen
   if (!document.getElementById('game').classList.contains('active')) {
     showScreen('game');
@@ -912,6 +962,8 @@ function render() {
   // top bar
   document.getElementById('game-room-code').textContent = roomCode;
   document.getElementById('round-num').textContent = gameState.round;
+  const wt = gameState.winTarget || 10;
+  document.getElementById('win-target-display').textContent = wt >= 999 ? '∞' : `/${wt}`;
   document.getElementById('score-display').innerHTML = gameState.players
     .map(p => `<span class="score-item">${p.name}: <span>${p.score} ★</span></span>`).join('');
 
@@ -959,7 +1011,7 @@ function renderPlayerStatus(czar) {
     const youTag = isMe ? `<span class="ps-badge ps-you">YOU</span>` : '';
     return `<div class="ps-row">
       <span class="ps-name">${p.name}</span>
-      <span class="ps-badge" style="background:transparent;color:var(--light);">${p.score}★</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:var(--white);min-width:2rem;text-align:right;">${p.score}<span style="font-size:0.7rem;color:var(--light);">pts</span></span>
       ${youTag}${badge}
     </div>`;
   }).join('');
@@ -1150,18 +1202,16 @@ function showResults() {
 async function nextRound() {
   document.getElementById('results-overlay').classList.remove('active');
 
-  if (gameState.round >= MAX_ROUNDS) {
-    // Game over — find overall winner
-    const topScore = Math.max(...gameState.players.map(p => p.score));
-    const champion = gameState.players.find(p => p.score === topScore);
-    toast(`Game Over! ${champion?.name} wins with ${topScore} points!`);
-    // reset to waiting
-    gameState.phase = 'waiting';
-    gameState.round = 1;
+  const winTarget = gameState.winTarget || 10;
+  const topScore = Math.max(...gameState.players.map(p => p.score));
+
+  if (winTarget < 999 && topScore >= winTarget) {
+    // Game over — someone hit the target
+    gameState.phase = 'gameover';
     gameState.submissions = [];
     gameState.winnerId = null;
     await pushState();
-    showWaiting();
+    showGameOver();
     return;
   }
 
@@ -1174,13 +1224,12 @@ async function nextRound() {
     }
   });
 
-  // Next czar
+  // Next czar — skip if czarIndex is out of bounds
   gameState.czarIndex = (gameState.czarIndex + 1) % gameState.players.length;
 
   // Next black card
   const nextBlack = gameState.blackDeck.shift();
   if (!nextBlack) {
-    // Reshuffle if needed
     const reshuffled = shuffle(BLACK_CARDS);
     gameState.blackDeck = reshuffled.slice(1);
     gameState.blackCard = reshuffled[0];
@@ -1195,6 +1244,49 @@ async function nextRound() {
   selectedWinnerId = null;
 
   await pushState();
+}
+
+// ── GAME OVER ──
+function showGameOver() {
+  const topScore = Math.max(...gameState.players.map(p => p.score));
+  const champion = gameState.players.find(p => p.score === topScore);
+  const overlay = document.getElementById('results-overlay');
+  document.getElementById('results-winner-name').textContent = champion?.name + ' WINS THE GAME!';
+  document.getElementById('results-card-text').textContent = `🏆 Final Score: ${topScore} points`;
+  document.getElementById('results-scores').innerHTML = [...gameState.players]
+    .sort((a, b) => b.score - a.score)
+    .map((p, i) => `<span class="score-item">${i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'} ${p.name}: <span>${p.score}pts</span></span>`).join('');
+  const nextBtn = document.getElementById('results-next-btn');
+  nextBtn.textContent = 'Play Again';
+  nextBtn.style.display = isHost ? 'block' : 'none';
+  nextBtn.onclick = playAgain;
+  overlay.classList.add('active');
+}
+
+async function playAgain() {
+  document.getElementById('results-overlay').classList.remove('active');
+  // Reset scores, reset decks, go back to waiting
+  const whiteDeck = shuffle(WHITE_CARDS);
+  const blackDeck = shuffle(BLACK_CARDS);
+  gameState.players.forEach(p => {
+    p.score = 0;
+    p.hand = whiteDeck.splice(0, HAND_SIZE);
+  });
+  gameState.whiteDeck = whiteDeck;
+  gameState.blackDeck = blackDeck.slice(1);
+  gameState.blackCard = blackDeck[0];
+  gameState.round = 1;
+  gameState.czarIndex = 0;
+  gameState.submissions = [];
+  gameState.winnerId = null;
+  gameState.phase = 'waiting';
+  // Reset next-round button text for future rounds
+  const nextBtn = document.getElementById('results-next-btn');
+  nextBtn.textContent = 'Next Round →';
+  nextBtn.onclick = nextRound;
+  selectedWinnerId = null;
+  await pushState();
+  showWaiting();
 }
 
 // ── LEAVE GAME ──
@@ -1321,11 +1413,26 @@ window.addEventListener('beforeunload', () => {
   if (channel) sbClient.removeChannel(channel);
 });
 
+// ── COOKIE NAME MEMORY ──
+function rememberName(name) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  document.cookie = `cae_name=${encodeURIComponent(name)};expires=${d.toUTCString()};path=/`;
+}
+function getRememberedName() {
+  const match = document.cookie.match(/(?:^|;\s*)cae_name=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 // ── BOOT ──
 (async () => {
   // Pre-fill room code if joining via invite link
   const urlRoom = new URLSearchParams(window.location.search).get('room');
   if (urlRoom) document.getElementById('room-code-input').value = urlRoom.toUpperCase();
+
+  // Pre-fill remembered name from cookie
+  const remembered = getRememberedName();
+  if (remembered) document.getElementById('player-name').value = remembered;
 
   const resumed = await tryResumeSession();
   if (!resumed) { render(); }
@@ -1344,6 +1451,7 @@ window.setupInviteUI = setupInviteUI;
 window.leaveGame = leaveGame;
 window.selectWinner = selectWinner;
 window.confirmWinner = confirmWinner;
+window.playAgain = playAgain;
 </script>
 </body>
 </html>
