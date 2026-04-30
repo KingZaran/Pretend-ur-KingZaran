@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cards Against Everyone</title>
+<title>Pretend You're KingZaran</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -365,7 +365,7 @@
 <div id="results-overlay">
   <div class="results-box">
     <div>
-      <h2>🏆 WINNER</h2>
+      <h2>ROUND WINNER! 🏆</h2>
       <p id="results-winner-name" class="winner-name" style="font-family:'Bebas Neue';font-size:2rem;"></p>
     </div>
     <div class="winning-card-display" id="results-card-text"></div>
@@ -377,14 +377,14 @@
 <!-- ══ LOBBY SCREEN ══ -->
 <div class="screen active" id="lobby">
   <div class="logo">
-    <h1>Cards Against<br>Everyone</h1>
-    <p>A party game for horrible people</p>
+    <h1>Pretend You're<br>KingZaran</h1>
+    <p>Spin-off of pretend you're<p>xyzzy and cards against<p>humanity</p>
   </div>
 
   <div class="lobby-cards">
-    <div class="mini-card black">What are my parents hiding from me? ____.</div>
-    <div class="mini-card white" style="--r:4deg">Poor life decisions</div>
-    <div class="mini-card white" style="--r:-5deg">A second family</div>
+    <div class="mini-card black">Introducing Freaky Football! It's like football, but ___!</div>
+    <div class="mini-card white" style="--r:4deg">Everyone is gooning</div>
+    <div class="mini-card white" style="--r:-5deg">includes an old guy who's almost dead</div>
   </div>
 
   <div class="lobby-form">
@@ -399,7 +399,7 @@
 
     <div class="input-group">
       <label>Room Code</label>
-      <input type="text" id="room-code-input" placeholder="e.g. XKQP" maxlength="4"
+      <input type="text" id="room-code-input" placeholder="ABCD" maxlength="4"
         style="text-transform:uppercase;letter-spacing:0.3em;font-size:1.3rem;text-align:center"
         oninput="this.value=this.value.toUpperCase()">
     </div>
@@ -425,7 +425,7 @@
   </div>
 
   <div class="player-list">
-    <h3>Players in room</h3>
+    <h3>Players in room:</h3>
     <div id="waiting-player-list"></div>
   </div>
 
@@ -753,7 +753,7 @@ async function joinGame() {
   if (error || !data) return showError('lobby-error', 'Room not found. Check the code.');
   if (data.state.phase !== 'waiting') return showError('lobby-error', 'Game already in progress.');
   if (data.state.players.some(p => p.name.toLowerCase() === myName.toLowerCase()))
-    return showError('lobby-error', '❌ That name is already taken — pick another.');
+    return showError('lobby-error', '❌ That name is already taken! Pick another name.');
 
   myPlayerId = crypto.randomUUID();  roomCode = code;
   isHost = false;
@@ -868,9 +868,9 @@ function renderWaiting() {
   const count = gameState.players.length;
   if (isHost) {
     startBtn.style.display = 'block';
-    startBtn.disabled = count < 2;
-    waitStatus.textContent = count < 2
-      ? `Need at least 2 players (${count}/2 joined)`
+    startBtn.disabled = count < 3;
+    waitStatus.textContent = count < 3
+      ? `Need at least 3 players (${count}/3 joined)`
       : `${count} player(s) ready — start whenever!`;
   } else {
     waitStatus.textContent = `${count} player(s) in room. Waiting for host to start...`;
@@ -951,10 +951,10 @@ function renderPlayerStatus(czar) {
     const hasPlayed = gameState.submissions.some(s => s.playerId === p.id);
     const isWinner = gameState.phase === 'results' && gameState.winnerId === p.id;
     let badge = '';
-    if (isWinner)      badge = `<span class="ps-badge ps-winner">🏆 WINNER</span>`;
-    else if (isCzarP)  badge = `<span class="ps-badge ps-czar">♠ CZAR</span>`;
-    else if (hasPlayed) badge = `<span class="ps-badge ps-played">✓ PLAYED</span>`;
-    else if (gameState.phase === 'playing') badge = `<span class="ps-badge ps-waiting">⏳ WAITING</span>`;
+    if (isWinner)      badge = `<span class="ps-badge ps-winner">ROUND WINNER🏆</span>`;
+    else if (isCzarP)  badge = `<span class="ps-badge ps-czar">CARD CZAR</span>`;
+    else if (hasPlayed) badge = `<span class="ps-badge ps-played">PLAYED ✓</span>`;
+    else if (gameState.phase === 'playing') badge = `<span class="ps-badge ps-waiting">WAITING...⏳</span>`;
     const youTag = isMe ? `<span class="ps-badge ps-you">YOU</span>` : '';
     return `<div class="ps-row">
       <span class="ps-name">${p.name}</span>
@@ -971,7 +971,7 @@ function renderStatus(isCzar, czar, me) {
 
   if (gameState.phase === 'playing') {
     if (isCzar) {
-      box.innerHTML = `<strong>You are the Card Czar! ♠</strong><br>Sit back while everyone plays their cards. (${gameState.submissions.length}/${nonCzarCount} submitted)`;
+      box.innerHTML = `<strong>You are the Card Czar!</strong><br>Sit back while everyone plays their cards. (${gameState.submissions.length}/${nonCzarCount} submitted)`;
     } else if (submitted) {
       box.innerHTML = `<strong>Card submitted!</strong><br>Waiting for others... (${gameState.submissions.length}/${nonCzarCount})`;
     } else {
@@ -979,9 +979,9 @@ function renderStatus(isCzar, czar, me) {
     }
   } else if (gameState.phase === 'judging') {
     if (isCzar) {
-      box.innerHTML = `<strong>Pick the funniest answer!</strong> Tap a card to select it as the winner.`;
+      box.innerHTML = `<strong>Pick your favourite answer!</strong> Select the winning card and press CHOOSE WINNER.`;
     } else {
-      box.innerHTML = `Waiting for <strong>${czar?.name}</strong> to pick the winner...`;
+      box.innerHTML = `Waiting for <strong>${czar?.name}</strong> to pick the winning card...`;
     }
   }
 }
@@ -1014,7 +1014,7 @@ function renderSubmissions(isCzar) {
 function renderHand(isCzar, me, bc) {
   const area = document.getElementById('hand-cards');
   if (isCzar || !me) {
-    area.innerHTML = isCzar ? `<div class="czar-label">♠ You are the Card Czar this round</div>` : '';
+    area.innerHTML = isCzar ? `<div class="czar-label">You are the Card Czar this round!</div>` : '';
     return;
   }
 
@@ -1136,7 +1136,7 @@ function showResults() {
   document.getElementById('results-winner-name').textContent = winner?.name || '';
   document.getElementById('results-card-text').textContent = submission?.cards.join(' / ') || '';
   document.getElementById('results-scores').innerHTML = gameState.players
-    .map(p => `<span class="score-item">${p.name}: <span>${p.score} ★</span></span>`).join('');
+    .map(p => `<span class="score-item">${p.name}: <span>${p.score} Points:</span></span>`).join('');
 
   const nextBtn = document.getElementById('results-next-btn');
   const czar = gameState.players[gameState.czarIndex % gameState.players.length];
@@ -1153,7 +1153,7 @@ async function nextRound() {
     // Game over — find overall winner
     const topScore = Math.max(...gameState.players.map(p => p.score));
     const champion = gameState.players.find(p => p.score === topScore);
-    toast(`🏆 Game Over! ${champion?.name} wins with ${topScore} points!`);
+    toast(`Game Over! ${champion?.name} wins with ${topScore} points!`);
     // reset to waiting
     gameState.phase = 'waiting';
     gameState.round = 1;
