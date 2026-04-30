@@ -478,7 +478,7 @@ window.submitCards = function() { return submitCards(); };
 // 🔧 CONFIGURATION — EDIT HERE
 // ─────────────────────────────────────────
 
-const SUPABASE_URL = 'https://fbcyonrppxttuaiwikmb.supabase.co/rest/v1/';       // e.g. https://abcdefgh.supabase.co
+const SUPABASE_URL = 'https://fbcyonrppxttuaiwikmb.supabase.co';       // e.g. https://abcdefgh.supabase.co
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZiY3lvbnJwcHh0dHVhaXdpa21iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTM1MTIsImV4cCI6MjA5MzA2OTUxMn0.9MQauhxD0blF2EiYlbh2Ex9PsxKC9FJfMQL1WhJXlP0'; // long string from Supabase dashboard
 
 const HAND_SIZE = 7;   // cards per player hand
@@ -685,10 +685,12 @@ function toast(msg) {
 
 // ── HOST GAME ──
 async function hostGame() {
+  showError('lobby-error', '');
   if (!initSupabase()) return;
   myName = document.getElementById('player-name').value.trim();
   if (!myName) return showError('lobby-error', 'Enter your name first.');
 
+  showError('lobby-error', 'Creating room...');
   myPlayerId = crypto.randomUUID();
   roomCode = pick4();
   isHost = true;
@@ -703,20 +705,25 @@ async function hostGame() {
 
   const state = {
     room: roomCode,
-    phase: 'waiting',   // waiting | playing | judging | results
+    phase: 'waiting',
     round: 1,
     czarIndex: 0,
     blackCard: blackDeck[0],
     blackDeck: blackDeck.slice(1),
     whiteDeck,
     players,
-    submissions: [],    // { playerId, cards: [] }
+    submissions: [],
     winnerId: null,
   };
 
-  const { error } = await sbClient.from('game_rooms').insert({ code: roomCode, state });
-  if (error) return showError('lobby-error', 'Error creating room: ' + error.message);
+  try {
+    const { error } = await sbClient.from('game_rooms').insert({ code: roomCode, state });
+    if (error) return showError('lobby-error', '\u274c Supabase error: ' + error.message);
+  } catch(e) {
+    return showError('lobby-error', '\u274c Network error: ' + e.message);
+  }
 
+  showError('lobby-error', '');
   gameState = state;
   showWaiting();
   subscribeToRoom();
