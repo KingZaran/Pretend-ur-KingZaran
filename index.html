@@ -347,6 +347,16 @@
   /* ── MISC ── */
   .loading { color: var(--mid); font-family: 'DM Mono', monospace; font-size: 0.8rem; text-align: center; padding: 2rem; }
   .tag { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; color: var(--mid); text-transform: uppercase; }
+
+  /* ── PLAYER STATUS ── */
+  .ps-row { display:flex; align-items:center; gap:0.5rem; font-size:0.8rem; padding:0.4rem 0.6rem; background:var(--grey); border-radius:6px; }
+  .ps-name { flex:1; font-weight:600; }
+  .ps-badge { font-family:'DM Mono',monospace; font-size:0.6rem; padding:2px 6px; border-radius:3px; letter-spacing:0.08em; white-space:nowrap; }
+  .ps-czar  { background:#7c3aed; color:#fff; }
+  .ps-waiting { background:#444; color:#aaa; }
+  .ps-played  { background:#2a6; color:#fff; }
+  .ps-you   { background:#1a5276; color:#aef; }
+  .ps-winner { background:#b7950b; color:#fff; }
 </style>
 </head>
 <body>
@@ -447,6 +457,7 @@
       <div class="right-panel">
         <div class="submissions-area">
           <h3>Submitted Cards (<span id="submit-count">0</span>/<span id="player-count">0</span>)</h3>
+          <div id="player-status-list" style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:1rem;"></div>
           <div class="submitted-cards" id="submitted-cards-display"></div>
         </div>
       </div>
@@ -757,6 +768,8 @@ async function joinGame() {
 }
 
 // ── SUBSCRIBE ──
+let heartbeatInterval = null;
+
 function subscribeToRoom() {
   if (channel) sbClient.removeChannel(channel);
   channel = sbClient
@@ -767,7 +780,31 @@ function subscribeToRoom() {
       gameState = payload.new.state;
       render();
     })
-    .subscribe();
+    .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+      // A player's tab closed — remove them if still in waiting phase
+      if (!gameState || gameState.phase !== 'waiting') return;
+      leftPresences.forEach(async lp => {
+        const idx = gameState.players.findIndex(p => p.id === lp.playerId);
+        if (idx === -1) return;
+        const leaving = gameState.players[idx];
+        gameState.players.splice(idx, 1);
+        toast(leaving.name + ' left the room.');
+        // Put their hand cards back in deck
+        if (leaving.hand) gameState.whiteDeck.push(...leaving.hand);
+        if (isHost) await pushState();
+      });
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await channel.track({ playerId: myPlayerId, name: myName });
+      }
+    });
+
+  // Heartbeat to keep presence alive
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(() => {
+    if (channel) channel.track({ playerId: myPlayerId, name: myName });
+  }, 20000);
 }
 
 // ── UPDATE STATE (host only writes) ──
@@ -852,6 +889,7 @@ function render() {
 
   // status box
   renderStatus(isCzar, czar, me);
+  renderPlayerStatus(czar);
 
   // submissions
   renderSubmissions(isCzar);
@@ -864,6 +902,29 @@ function render() {
 
   // results overlay
   if (gameState.phase === 'results') showResults();
+}
+
+// ── PLAYER STATUS PANEL ──
+function renderPlayerStatus(czar) {
+  const el = document.getElementById('player-status-list');
+  if (!el) return;
+  el.innerHTML = gameState.players.map(p => {
+    const isMe = p.id === myPlayerId;
+    const isCzarP = p.id === czar?.id;
+    const hasPlayed = gameState.submissions.some(s => s.playerId === p.id);
+    const isWinner = gameState.phase === 'results' && gameState.winnerId === p.id;
+    let badge = '';
+    if (isWinner)      badge = `<span class="ps-badge ps-winner">🏆 WINNER</span>`;
+    else if (isCzarP)  badge = `<span class="ps-badge ps-czar">♠ CZAR</span>`;
+    else if (hasPlayed) badge = `<span class="ps-badge ps-played">✓ PLAYED</span>`;
+    else if (gameState.phase === 'playing') badge = `<span class="ps-badge ps-waiting">⏳ WAITING</span>`;
+    const youTag = isMe ? `<span class="ps-badge ps-you">YOU</span>` : '';
+    return `<div class="ps-row">
+      <span class="ps-name">${p.name}</span>
+      <span class="ps-badge" style="background:transparent;color:var(--light);">${p.score}★</span>
+      ${youTag}${badge}
+    </div>`;
+  }).join('');
 }
 
 function renderStatus(isCzar, czar, me) {
@@ -1120,6 +1181,12 @@ function copyInviteLink() {
     .catch(() => { document.getElementById('invite-link-input').select(); document.execCommand('copy'); toast('Link copied!'); });
 }
 
+// ── CLEANUP ON UNLOAD ──
+window.addEventListener('beforeunload', () => {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  if (channel) sbClient.removeChannel(channel);
+});
+
 // ── BOOT ──
 (async () => {
   // Pre-fill room code if joining via invite link
@@ -1139,6 +1206,7 @@ window.toggleCard = toggleCard;
 window.pickWinner = pickWinner;
 window.submitCards = submitCards;
 window.copyInviteLink = copyInviteLink;
+window.setupInviteUI = setupInviteUI;
 </script>
 </body>
 </html>
