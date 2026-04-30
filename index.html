@@ -432,6 +432,7 @@
   <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:0.75rem;">
     <button class="btn" id="start-btn" onclick="startGame()" style="display:none">Start Game</button>
     <p class="loading" id="waiting-status"></p>
+    <button class="btn secondary" onclick="leaveGame()" style="margin-top:0.5rem;">Leave Room</button>
   </div>
 </div>
 
@@ -443,6 +444,7 @@
       <span class="room-pill">ROOM: <span id="game-room-code">----</span></span>
       <span class="round-info">Round <span id="round-num">1</span></span>
       <div class="score-list" id="score-display"></div>
+      <button class="btn secondary" onclick="leaveGame()" style="width:auto;font-size:0.85rem;padding:0.4rem 0.9rem;">Leave</button>
     </div>
 
     <div class="game-center">
@@ -653,6 +655,7 @@ let isHost = false;
 let channel;
 let gameState = null; // synced from DB
 let selectedCards = []; // indices into hand
+let selectedWinnerId = null; // czar's selected submission
 
 function initSupabase() {
   if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
@@ -777,21 +780,50 @@ function subscribeToRoom() {
     .on('postgres_changes', {
       event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `code=eq.${roomCode}`
     }, payload => {
-      gameState = payload.new.state;
+      const newState = payload.new.state;
+      // Check if we've been promoted to host
+      const meInNewState = newState.players.find(p => p.id === myPlayerId);
+      if (meInNewState && meInNewState.isHost && !isHost) {
+        isHost = true;
+        saveSession();
+        toast('You are now the Host!');
+      }
+      gameState = newState;
       render();
     })
     .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-      // A player's tab closed — remove them if still in waiting phase
-      if (!gameState || gameState.phase !== 'waiting') return;
+      if (!gameState) return;
       leftPresences.forEach(async lp => {
         const idx = gameState.players.findIndex(p => p.id === lp.playerId);
         if (idx === -1) return;
         const leaving = gameState.players[idx];
         gameState.players.splice(idx, 1);
-        toast(leaving.name + ' left the room.');
-        // Put their hand cards back in deck
+        toast(leaving.name + ' disconnected.');
         if (leaving.hand) gameState.whiteDeck.push(...leaving.hand);
-        if (isHost) await pushState();
+
+        if (gameState.players.length === 0) {
+          await sbClient.from('game_rooms').delete().eq('code', roomCode);
+          return;
+        }
+
+        // If the leaver was host, assign a new one
+        if (leaving.isHost && gameState.players.length > 0) {
+          const newHost = gameState.players[Math.floor(Math.random() * gameState.players.length)];
+          newHost.isHost = true;
+          if (gameState.phase !== 'waiting') {
+            gameState.phase = 'waiting';
+            gameState.submissions = [];
+            gameState.winnerId = null;
+          }
+        }
+
+        // Only the current host pushes the updated state
+        const currentHost = gameState.players.find(p => p.isHost);
+        if (currentHost && currentHost.id === myPlayerId) {
+          isHost = true;
+          saveSession();
+          await pushState();
+        }
       });
     })
     .subscribe(async (status) => {
@@ -800,7 +832,6 @@ function subscribeToRoom() {
       }
     });
 
-  // Heartbeat to keep presence alive
   if (heartbeatInterval) clearInterval(heartbeatInterval);
   heartbeatInterval = setInterval(() => {
     if (channel) channel.track({ playerId: myPlayerId, name: myName });
@@ -858,13 +889,19 @@ async function startGame() {
 function render() {
   if (!gameState) return;
   if (gameState.phase === 'waiting') {
-    renderWaiting();
+    if (!document.getElementById('waiting').classList.contains('active')) showWaiting();
+    else renderWaiting();
     return;
   }
 
-  if (document.getElementById('game').style.display !== 'flex' &&
-      !document.getElementById('game').classList.contains('active')) {
+  // Always ensure we're on the game screen
+  if (!document.getElementById('game').classList.contains('active')) {
     showScreen('game');
+  }
+
+  // Close results overlay whenever phase is no longer 'results'
+  if (gameState.phase !== 'results') {
+    document.getElementById('results-overlay').classList.remove('active');
   }
 
   const me = gameState.players.find(p => p.id === myPlayerId);
@@ -952,17 +989,21 @@ function renderStatus(isCzar, czar, me) {
 function renderSubmissions(isCzar) {
   const area = document.getElementById('submitted-cards-display');
   if (gameState.phase === 'playing') {
-    // show face-down placeholders
     area.innerHTML = gameState.submissions.map(() =>
       `<div class="white-card face-down"></div>`
     ).join('');
   } else if (gameState.phase === 'judging' || gameState.phase === 'results') {
-    area.innerHTML = gameState.submissions.map((s, i) => {
+    area.innerHTML = gameState.submissions.map(s => {
       const isWinner = gameState.phase === 'results' && gameState.winnerId === s.playerId;
+      const isSelected = isCzar && selectedWinnerId === s.playerId;
       const player = gameState.players.find(p => p.id === s.playerId);
-      const cardClass = isWinner ? 'winner-card' : (isCzar && gameState.phase === 'judging' ? 'selectable' : '');
+      let cardClass = '';
+      if (isWinner) cardClass = 'winner-card';
+      else if (isSelected) cardClass = 'selected';
+      else if (isCzar && gameState.phase === 'judging') cardClass = 'selectable';
       const cards = s.cards.join(' / ');
-      return `<div class="white-card ${cardClass}" onclick="${isCzar && gameState.phase === 'judging' ? `pickWinner('${s.playerId}')` : ''}" >
+      const clickFn = (isCzar && gameState.phase === 'judging') ? `selectWinner('${s.playerId}')` : '';
+      return `<div class="white-card ${cardClass}" onclick="${clickFn}">
         ${cards}
         ${gameState.phase === 'results' ? `<div class="player-tag">${player?.name || ''}</div>` : ''}
       </div>`;
@@ -994,8 +1035,18 @@ function renderHand(isCzar, me, bc) {
 function renderActionBar(isCzar, me, bc) {
   const bar = document.getElementById('action-bar');
   bar.innerHTML = '';
-  if (isCzar || !me) return;
 
+  if (isCzar && gameState.phase === 'judging') {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = 'Choose Winner';
+    btn.disabled = !selectedWinnerId;
+    btn.onclick = confirmWinner;
+    bar.appendChild(btn);
+    return;
+  }
+
+  if (!me) return;
   const alreadySubmitted = !!gameState.submissions.find(s => s.playerId === myPlayerId);
   const pickN = bc?.pick || 1;
 
@@ -1050,18 +1101,30 @@ async function submitCards() {
   await pushState();
 }
 
-// ── CZAR PICKS WINNER ──
-async function pickWinner(winnerId) {
-  if (!isHost && gameState.players[gameState.czarIndex % gameState.players.length]?.id !== myPlayerId) return;
+// ── CZAR SELECTS / CONFIRMS WINNER ──
+function selectWinner(winnerId) {
   const czar = gameState.players[gameState.czarIndex % gameState.players.length];
   if (czar?.id !== myPlayerId) return;
+  selectedWinnerId = selectedWinnerId === winnerId ? null : winnerId;
+  renderSubmissions(true);
+  renderActionBar(true, null, null);
+}
 
-  const winner = gameState.players.find(p => p.id === winnerId);
+async function confirmWinner() {
+  if (!selectedWinnerId) return;
+  const czar = gameState.players[gameState.czarIndex % gameState.players.length];
+  if (czar?.id !== myPlayerId) return;
+  const winner = gameState.players.find(p => p.id === selectedWinnerId);
   if (winner) winner.score += 1;
-
-  gameState.winnerId = winnerId;
+  gameState.winnerId = selectedWinnerId;
   gameState.phase = 'results';
+  selectedWinnerId = null;
   await pushState();
+}
+
+async function pickWinner(winnerId) {
+  // kept for backwards compatibility — now just delegates
+  selectWinner(winnerId);
 }
 
 // ── SHOW RESULTS ──
@@ -1128,8 +1191,52 @@ async function nextRound() {
   gameState.submissions = [];
   gameState.winnerId = null;
   gameState.phase = 'playing';
+  selectedWinnerId = null;
 
   await pushState();
+}
+
+// ── LEAVE GAME ──
+async function leaveGame() {
+  clearSession();
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  if (channel) { sbClient.removeChannel(channel); channel = null; }
+
+  if (!gameState) { showScreen('lobby'); return; }
+
+  const idx = gameState.players.findIndex(p => p.id === myPlayerId);
+  if (idx !== -1) {
+    const me = gameState.players[idx];
+    // Return hand to deck
+    if (me.hand) gameState.whiteDeck.push(...me.hand);
+    gameState.players.splice(idx, 1);
+  }
+
+  if (gameState.players.length === 0) {
+    // Last one out — delete the room
+    await sbClient.from('game_rooms').delete().eq('code', roomCode);
+  } else {
+    // If we were host, assign a new random host
+    const wasHost = isHost;
+    if (wasHost) {
+      const newHost = gameState.players[Math.floor(Math.random() * gameState.players.length)];
+      newHost.isHost = true;
+      // If game was in progress, reset to waiting so new host can manage
+      if (gameState.phase !== 'waiting') {
+        gameState.phase = 'waiting';
+        gameState.submissions = [];
+        gameState.winnerId = null;
+      }
+    }
+    await sbClient.from('game_rooms').update({ state: gameState }).eq('code', roomCode);
+  }
+
+  gameState = null;
+  roomCode = null;
+  isHost = false;
+  myPlayerId = null;
+  myName = null;
+  showScreen('lobby');
 }
 
 // ── SESSION PERSISTENCE ──
@@ -1151,8 +1258,34 @@ async function tryResumeSession() {
   initSupabase();
   const { data, error } = await sbClient.from('game_rooms').select('*').eq('code', savedRoom).single();
   if (error || !data) { clearSession(); return false; }
-  if (!data.state.players.find(p => p.id === savedId)) { clearSession(); return false; }
+  const playerInRoom = data.state.players.find(p => p.id === savedId);
+  if (!playerInRoom) {
+    // Player was kicked while away. Check if room is empty — if so, become solo host.
+    if (data.state.players.length === 0) {
+      myPlayerId = savedId; myName = savedName; roomCode = savedRoom;
+      isHost = true;
+      const whiteDeck = shuffle(WHITE_CARDS);
+      const blackDeck = shuffle(BLACK_CARDS);
+      const freshState = {
+        room: roomCode, phase: 'waiting', round: 1, czarIndex: 0,
+        blackCard: blackDeck[0], blackDeck: blackDeck.slice(1), whiteDeck,
+        players: [{ id: myPlayerId, name: myName, score: 0, hand: whiteDeck.splice(0, HAND_SIZE), isHost: true }],
+        submissions: [], winnerId: null,
+      };
+      await sbClient.from('game_rooms').update({ state: freshState }).eq('code', roomCode);
+      gameState = freshState;
+      saveSession();
+      subscribeToRoom();
+      showWaiting();
+      toast('Room was empty — you\'re the new host!');
+      return true;
+    }
+    clearSession(); return false;
+  }
   myPlayerId = savedId; myName = savedName; roomCode = savedRoom; isHost = savedHost;
+  // Sync host status from DB in case it changed while we were away
+  isHost = !!playerInRoom.isHost;
+  saveSession();
   gameState = data.state;
   subscribeToRoom();
   if (gameState.phase === 'waiting') { showWaiting(); }
@@ -1207,6 +1340,9 @@ window.pickWinner = pickWinner;
 window.submitCards = submitCards;
 window.copyInviteLink = copyInviteLink;
 window.setupInviteUI = setupInviteUI;
+window.leaveGame = leaveGame;
+window.selectWinner = selectWinner;
+window.confirmWinner = confirmWinner;
 </script>
 </body>
 </html>
