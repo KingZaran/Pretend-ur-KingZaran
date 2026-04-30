@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cards Against Everyone</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --black: #0a0a0a;
+    --white: #f5f0e8;
+    --cream: #ede8dc;
+    --accent: #e63946;
+    --grey: #2a2a2a;
+    --mid: #555;
+    --light: #888;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--black);
+    color: var(--white);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── NOISE OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999; opacity: 0.3;
+  }
+
+  h1, h2, h3 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
+
+  /* ── SCREENS ── */
+  .screen { display: none; min-height: 100vh; padding: 2rem; animation: fadeIn 0.3s ease; }
+  .screen.active { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── LOBBY ── */
+  #lobby { gap: 2.5rem; }
+
+  .logo {
+    text-align: center;
+  }
+  .logo h1 { font-size: clamp(3rem, 10vw, 6rem); line-height: 1; color: var(--white); }
+  .logo p { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--light); letter-spacing: 0.2em; text-transform: uppercase; margin-top: 0.5rem; }
+
+  .lobby-cards {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .mini-card {
+    width: 120px; height: 160px;
+    border-radius: 8px;
+    padding: 1rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+    transform: rotate(var(--r, -3deg));
+    box-shadow: 4px 4px 20px rgba(0,0,0,0.5);
+    transition: transform 0.3s;
+  }
+  .mini-card:hover { transform: rotate(0deg) scale(1.05); }
+  .mini-card.black { background: var(--black); color: var(--white); border: 2px solid #333; }
+  .mini-card.white { background: var(--white); color: var(--black); border: none; --r: 2deg; }
+
+  .lobby-form {
+    display: flex; flex-direction: column;
+    gap: 1rem; width: 100%; max-width: 360px;
+  }
+
+  .input-group { display: flex; flex-direction: column; gap: 0.4rem; }
+  .input-group label { font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.15em; color: var(--light); text-transform: uppercase; }
+
+  input[type="text"] {
+    background: var(--grey);
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: var(--white);
+    font-family: 'DM Mono', monospace;
+    font-size: 1rem;
+    padding: 0.75rem 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  input[type="text"]::placeholder { color: var(--mid); }
+
+  .btn {
+    background: var(--white);
+    border: none;
+    border-radius: 6px;
+    color: var(--black);
+    cursor: pointer;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.3rem;
+    letter-spacing: 0.1em;
+    padding: 0.9rem 2rem;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .btn:hover { background: var(--cream); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(255,255,255,0.1); }
+  .btn:active { transform: translateY(0); }
+  .btn.secondary { background: var(--grey); color: var(--white); }
+  .btn.secondary:hover { background: #333; }
+  .btn.danger { background: var(--accent); color: var(--white); }
+  .btn.accent { background: var(--accent); color: var(--white); }
+
+  .divider {
+    display: flex; align-items: center; gap: 1rem;
+    font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--mid);
+  }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #333; }
+
+  /* ── WAITING ROOM ── */
+  #waiting { gap: 2rem; }
+
+  .room-code-display {
+    text-align: center;
+    background: var(--grey);
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%; max-width: 360px;
+  }
+  .room-code-display .label { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--light); letter-spacing: 0.2em; text-transform: uppercase; }
+  .room-code-display .code { font-family: 'Bebas Neue', sans-serif; font-size: 5rem; letter-spacing: 0.2em; line-height: 1; color: var(--white); }
+  .room-code-display .sublabel { font-size: 0.8rem; color: var(--mid); margin-top: 0.5rem; }
+
+  .player-list {
+    width: 100%; max-width: 360px;
+    display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .player-list h3 { font-size: 0.85rem; font-family: 'DM Mono', monospace; color: var(--light); letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+
+  .player-chip {
+    display: flex; align-items: center; gap: 0.75rem;
+    background: var(--grey);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+  }
+  .player-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; flex-shrink: 0; }
+  .player-chip .czar-badge {
+    margin-left: auto;
+    font-family: 'DM Mono', monospace; font-size: 0.6rem;
+    background: var(--accent); color: white;
+    padding: 2px 6px; border-radius: 3px; letter-spacing: 0.1em;
+  }
+
+  /* ── GAME SCREEN ── */
+  #game { padding: 1rem; justify-content: flex-start; gap: 0; }
+
+  .game-layout { width: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: 1rem; }
+
+  .top-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background: var(--grey);
+    border-radius: 10px;
+    flex-wrap: wrap; gap: 0.5rem;
+  }
+  .top-bar .room-pill {
+    font-family: 'DM Mono', monospace; font-size: 0.75rem;
+    background: var(--black); border-radius: 4px; padding: 4px 10px; color: var(--light);
+  }
+  .top-bar .round-info { font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: 0.05em; }
+  .score-list { display: flex; gap: 1rem; font-size: 0.8rem; flex-wrap: wrap; }
+  .score-item { color: var(--light); }
+  .score-item span { color: var(--white); font-weight: 600; }
+
+  .game-center {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1rem;
+  }
+  @media (max-width: 700px) { .game-center { grid-template-columns: 1fr; } }
+
+  .black-card-area {
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+
+  .black-card {
+    background: var(--black);
+    border: 2px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    min-height: 200px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+  }
+  .black-card::after {
+    content: '♠';
+    position: absolute; bottom: 1rem; right: 1rem;
+    font-size: 2rem; opacity: 0.15;
+  }
+  .black-card .card-text { font-size: 1.1rem; font-weight: 600; line-height: 1.5; color: var(--white); }
+  .black-card .pick-label { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: var(--mid); letter-spacing: 0.15em; }
+
+  .status-box {
+    background: var(--grey);
+    border-radius: 10px;
+    padding: 1.25rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--light);
+    min-height: 80px;
+  }
+  .status-box strong { color: var(--white); }
+
+  .right-panel { display: flex; flex-direction: column; gap: 1rem; }
+
+  .submissions-area h3 {
+    font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--light);
+    letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 0.75rem;
+  }
+
+  .submitted-cards {
+    display: flex; flex-wrap: wrap; gap: 0.75rem;
+  }
+
+  .white-card {
+    background: var(--white);
+    color: var(--black);
+    border-radius: 10px;
+    padding: 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.4;
+    cursor: default;
+    min-width: 130px;
+    max-width: 180px;
+    flex: 1;
+    min-height: 120px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    transition: all 0.2s;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+    position: relative;
+  }
+  .white-card::after {
+    content: '♥';
+    position: absolute; bottom: 0.5rem; right: 0.75rem;
+    font-size: 1.2rem; opacity: 0.12;
+  }
+  .white-card.selectable { cursor: pointer; }
+  .white-card.selectable:hover { transform: translateY(-4px) rotate(1deg); box-shadow: 4px 8px 20px rgba(0,0,0,0.4); }
+  .white-card.selected { outline: 3px solid var(--accent); transform: translateY(-4px); }
+  .white-card.winner-card { outline: 3px solid #4caf50; background: #f0fff4; }
+  .white-card.face-down {
+    background: var(--grey);
+    color: transparent;
+    cursor: default;
+  }
+  .white-card.face-down::before {
+    content: '?';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--mid); font-size: 2rem; font-family: 'Bebas Neue', sans-serif;
+  }
+  .white-card .player-tag {
+    font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--mid); margin-top: 0.5rem;
+  }
+
+  .hand-area { display: flex; flex-direction: column; gap: 0.75rem; }
+  .hand-area h3 { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--light); letter-spacing: 0.15em; text-transform: uppercase; }
+  .hand-cards { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+  .czar-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem; letter-spacing: 0.1em;
+    color: var(--accent); text-transform: uppercase;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    text-align: center;
+  }
+
+  .action-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .action-bar .btn { width: auto; flex: 1; min-width: 140px; }
+
+  /* ── NOTIFICATIONS ── */
+  #notif {
+    position: fixed; top: 1rem; right: 1rem;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    z-index: 10000; max-width: 300px;
+  }
+  .toast {
+    background: var(--grey);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+    pointer-events: none;
+  }
+  @keyframes slideIn { from { transform: translateX(110%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes fadeOut { to { opacity: 0; transform: translateX(110%); } }
+
+  .error-msg {
+    color: var(--accent);
+    font-family: 'DM Mono', monospace; font-size: 0.75rem;
+    text-align: center; min-height: 1.2em;
+  }
+
+  /* ── RESULTS OVERLAY ── */
+  #results-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  #results-overlay.active { display: flex; }
+
+  .results-box {
+    background: var(--grey);
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 500px; width: 90%;
+    text-align: center;
+    display: flex; flex-direction: column; gap: 1.5rem;
+    animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes popIn { from { transform: scale(0.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .results-box h2 { font-size: 3rem; }
+  .results-box .winner-name { color: var(--accent); }
+  .winning-card-display {
+    background: var(--white); color: var(--black);
+    border-radius: 12px; padding: 1.5rem;
+    font-size: 1rem; font-weight: 600; line-height: 1.5;
+    margin: 0 auto; max-width: 280px;
+  }
+
+  /* ── MISC ── */
+  .loading { color: var(--mid); font-family: 'DM Mono', monospace; font-size: 0.8rem; text-align: center; padding: 2rem; }
+  .tag { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; color: var(--mid); text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<div id="notif"></div>
+<div id="results-overlay">
+  <div class="results-box">
+    <div>
+      <h2>🏆 WINNER</h2>
+      <p id="results-winner-name" class="winner-name" style="font-family:'Bebas Neue';font-size:2rem;"></p>
+    </div>
+    <div class="winning-card-display" id="results-card-text"></div>
+    <div id="results-scores" class="score-list" style="justify-content:center;flex-wrap:wrap;gap:0.75rem;"></div>
+    <button class="btn" id="results-next-btn" onclick="nextRound()">Next Round →</button>
+  </div>
+</div>
+
+<!-- ══ LOBBY SCREEN ══ -->
+<div class="screen active" id="lobby">
+  <div class="logo">
+    <h1>Cards Against<br>Everyone</h1>
+    <p>A party game for horrible people</p>
+  </div>
+
+  <div class="lobby-cards">
+    <div class="mini-card black">What are my parents hiding from me? ____.</div>
+    <div class="mini-card white" style="--r:4deg">Poor life decisions</div>
+    <div class="mini-card white" style="--r:-5deg">A second family</div>
+  </div>
+
+  <div class="lobby-form">
+    <div class="input-group">
+      <label>Your name</label>
+      <input type="text" id="player-name" placeholder="Enter your name" maxlength="20" autocomplete="off">
+    </div>
+
+    <button class="btn" onclick="hostGame()">Host a Game</button>
+
+    <div class="divider">or join existing</div>
+
+    <div class="input-group">
+      <label>Room Code</label>
+      <input type="text" id="room-code-input" placeholder="e.g. XKQP" maxlength="4"
+        style="text-transform:uppercase;letter-spacing:0.3em;font-size:1.3rem;text-align:center"
+        oninput="this.value=this.value.toUpperCase()">
+    </div>
+
+    <button class="btn secondary" onclick="joinGame()">Join Game</button>
+
+    <p class="error-msg" id="lobby-error"></p>
+  </div>
+</div>
+
+<!-- ══ WAITING ROOM SCREEN ══ -->
+<div class="screen" id="waiting">
+  <div class="room-code-display">
+    <p class="label">Room Code</p>
+    <p class="code" id="display-room-code">----</p>
+    <p class="sublabel">Share this code with friends</p>
+  </div>
+
+  <div class="player-list">
+    <h3>Players in room</h3>
+    <div id="waiting-player-list"></div>
+  </div>
+
+  <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:0.75rem;">
+    <button class="btn" id="start-btn" onclick="startGame()" style="display:none">Start Game</button>
+    <p class="loading" id="waiting-status">Waiting for host to start...</p>
+  </div>
+</div>
+
+<!-- ══ GAME SCREEN ══ -->
+<div class="screen" id="game">
+  <div class="game-layout">
+
+    <div class="top-bar">
+      <span class="room-pill">ROOM: <span id="game-room-code">----</span></span>
+      <span class="round-info">Round <span id="round-num">1</span></span>
+      <div class="score-list" id="score-display"></div>
+    </div>
+
+    <div class="game-center">
+      <div class="black-card-area">
+        <div class="black-card" id="black-card-display">
+          <span class="card-text" id="black-card-text">Loading...</span>
+          <span class="pick-label">PICK <span id="pick-count">1</span></span>
+        </div>
+        <div class="status-box" id="status-box">Waiting...</div>
+      </div>
+
+      <div class="right-panel">
+        <div class="submissions-area">
+          <h3>Submitted Cards (<span id="submit-count">0</span>/<span id="player-count">0</span>)</h3>
+          <div class="submitted-cards" id="submitted-cards-display"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hand-area" id="hand-area">
+      <h3>Your Hand — <span id="hand-status">Pick a card</span></h3>
+      <div class="hand-cards" id="hand-cards"></div>
+      <div class="action-bar" id="action-bar"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Expose game functions globally for onclick handlers
+// (needed when running inside sandboxed iframes)
+window.hostGame = function() { return hostGame(); };
+window.joinGame = function() { return joinGame(); };
+window.startGame = function() { return startGame(); };
+window.nextRound = function() { return nextRound(); };
+window.toggleCard = function(i) { return toggleCard(i); };
+window.pickWinner = function(id) { return pickWinner(id); };
+window.submitCards = function() { return submitCards(); };
+
+// ════════════════════════════════════════
+//  ██████╗ ██████╗ ███╗   ██╗███████╗
+// ██╔════╝██╔═══██╗████╗  ██║██╔════╝
+// ██║     ██║   ██║██╔██╗ ██║█████╗
+// ██║     ██║   ██║██║╚██╗██║██╔══╝
+// ╚██████╗╚██████╔╝██║ ╚████║██║
+//  ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝
+// ════════════════════════════════════════
+
+// ─────────────────────────────────────────
+// 🔧 CONFIGURATION — EDIT HERE
+// ─────────────────────────────────────────
+
+const SUPABASE_URL = 'https://fbcyonrppxttuaiwikmb.supabase.co/rest/v1/';       // e.g. https://abcdefgh.supabase.co
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZiY3lvbnJwcHh0dHVhaXdpa21iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTM1MTIsImV4cCI6MjA5MzA2OTUxMn0.9MQauhxD0blF2EiYlbh2Ex9PsxKC9FJfMQL1WhJXlP0'; // long string from Supabase dashboard
+
+const HAND_SIZE = 7;   // cards per player hand
+const MAX_ROUNDS = 10; // rounds before game ends
+
+// ─────────────────────────────────────────
+// 🃏 BLACK CARDS — Add your own!
+// Use ____ to mark where answers go.
+// "pick" = how many white cards players must play.
+// ─────────────────────────────────────────
+
+const BLACK_CARDS = [
+  { text: "What's that smell?", pick: 1 },
+  { text: "What ended my last relationship?", pick: 1 },
+  { text: "In a pinch, ____ can be used as a condom.", pick: 1 },
+  { text: "I got 99 problems but ____ ain't one.", pick: 1 },
+  { text: "What's the next Happy Meal toy?", pick: 1 },
+  { text: "What do old people smell like?", pick: 1 },
+  { text: "What's a girl's best friend?", pick: 1 },
+  { text: "What don't you want to find in your cereal?", pick: 1 },
+  { text: "What's my secret power?", pick: 1 },
+  { text: "During sex, I like to think about ____.", pick: 1 },
+  { text: "What's always a better idea at the time?", pick: 1 },
+  { text: "What's the most emo?", pick: 1 },
+  { text: "Instead of coal, Santa now gives bad kids ____.", pick: 1 },
+  { text: "____ is a lot better when you're drunk.", pick: 1 },
+  { text: "What did I get for Christmas?", pick: 1 },
+  { text: "What's the new black?", pick: 1 },
+  { text: "What's the next superhero power?", pick: 1 },
+  { text: "Science still cannot explain ____.", pick: 1 },
+  { text: "What does the 'S' in 'Jesus H. Christ' stand for?", pick: 1 },
+  { text: "What would grandma find disturbing, yet oddly charming?", pick: 1 },
+  { text: "Life was never the same after ____.", pick: 1 },
+  { text: "What's in the suitcase in Pulp Fiction?", pick: 1 },
+  { text: "____, ____ — that's my secret to success.", pick: 2 },
+  { text: "I drink to forget ____.", pick: 1 },
+  { text: "What's that sound?", pick: 1 },
+  { text: "What's the most intimidating thing about me?", pick: 1 },
+  { text: "Why am I sticky?", pick: 1 },
+  { text: "When I'm in jail, I'll have ____ to keep me company.", pick: 1 },
+  { text: "What's the gift that keeps on giving?", pick: 1 },
+  { text: "Make a haiku. ____, ____, ____.", pick: 3 },
+];
+
+// ─────────────────────────────────────────
+// 🃏 WHITE CARDS — Add your own!
+// ─────────────────────────────────────────
+
+const WHITE_CARDS = [
+  "A disappointing birthday party",
+  "Getting hit by a car",
+  "Puppies!",
+  "A really sour lemon",
+  "Flying sex snakes",
+  "Object permanence",
+  "Wearing underwear inside-out",
+  "The forbidden fruit",
+  "A tiny horse",
+  "Catastrophic failure",
+  "Grandma",
+  "Being on fire",
+  "The glass ceiling",
+  "Poor life decisions",
+  "A second family",
+  "Dry heaving",
+  "Crying yourself to sleep",
+  "Blaming the victim",
+  "An erection that just won't quit",
+  "My relationship with God",
+  "Vigorous jazz hands",
+  "Natural male enhancement",
+  "The milk man",
+  "Feelings",
+  "Dead parents",
+  "White privilege",
+  "Passive aggression",
+  "The entire Wikipedia article on ducks",
+  "The terrorists",
+  "Schadenfreude",
+  "A windmill full of corpses",
+  "Exactly what you'd expect",
+  "Eating an entire pizza by myself",
+  "Sweet, sweet vengeance",
+  "A can of whoop-ass",
+  "Giving 110%",
+  "Drinking alone",
+  "Sniffing glue",
+  "A gentle caress",
+  "Uncontrollable crying",
+  "The invisible hand",
+  "Praying the gay away",
+  "Poorly-timed Holocaust jokes",
+  "Promiscuous but safe sex",
+  "Fear itself",
+  "Keanu Reeves",
+  "Stephen Hawking talking dirty",
+  "The hard nipple of justice",
+  "Friendly fire",
+  "Your mom",
+  "A lifetime of regret",
+  "Multiple stab wounds",
+  "Looking good, feeling good",
+  "Twitter",
+  "Screaming and throwing up",
+  "Smegma",
+  "The blood of Christ",
+  "Some sort of cancer",
+  "A surprise party",
+  "Getting naked and watching Nickelodeon",
+  "Eating the last of the ice cream",
+  "A dog",
+  "Being marginalized",
+  "Hot cheese",
+  "Explosions",
+  "Baby Jesus",
+  "Sexting",
+  "The inevitable heat death of the universe",
+  "Abstinence",
+  "Actual witchcraft",
+  "Nickelback",
+  "Taking a photograph",
+  "A salty surprise",
+  "Powerful thighs",
+  "Her Majesty, Queen Elizabeth II",
+  "Repression",
+  "Not having sex",
+  "The G-spot",
+  "Heteronormativity",
+  "Ryan Gosling",
+  "A subscription to a video game",
+  "Gluten",
+  "Pooping back and forth forever",
+  "Genghis Khan",
+  "Bees?",
+  "The miracle of childbirth",
+  "Exactly zero dollars",
+  "RoboCop",
+  "Chainsaws for hands",
+  "Refusing to take off your sunglasses",
+  "Forgetting everything",
+  "The entire nation of Portugal",
+  "Hot pockets",
+  "A big black man",
+  "Waiting til marriage",
+  "Dropping a deuce",
+  "Running away",
+  "A defective condom",
+  "Being a boss",
+  "Surprise sex",
+  "A moment of silence",
+  "Letting yourself go",
+  "Batman",
+];
+
+// ─────────────────────────────────────────
+// 🛠 GAME ENGINE — Don't need to edit below
+// ─────────────────────────────────────────
+
+let sbClient;
+let myPlayerId;
+let myName;
+let roomCode;
+let isHost = false;
+let channel;
+let gameState = null; // synced from DB
+let selectedCards = []; // indices into hand
+
+function initSupabase() {
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+    showError('lobby-error', 'Supabase not configured. Open index.html and add your URL + key!');
+    return false;
+  }
+  sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return true;
+}
+
+// ── UTILITY ──
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function pick4() {
+  return Math.random().toString(36).substring(2, 6).toUpperCase();
+}
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = msg;
+}
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.getElementById('notif').appendChild(el);
+  setTimeout(() => el.remove(), 3100);
+}
+
+// ── HOST GAME ──
+async function hostGame() {
+  if (!initSupabase()) return;
+  myName = document.getElementById('player-name').value.trim();
+  if (!myName) return showError('lobby-error', 'Enter your name first.');
+
+  myPlayerId = crypto.randomUUID();
+  roomCode = pick4();
+  isHost = true;
+
+  const whiteDeck = shuffle(WHITE_CARDS);
+  const blackDeck = shuffle(BLACK_CARDS);
+
+  const players = [{
+    id: myPlayerId, name: myName, score: 0,
+    hand: whiteDeck.splice(0, HAND_SIZE), isHost: true
+  }];
+
+  const state = {
+    room: roomCode,
+    phase: 'waiting',   // waiting | playing | judging | results
+    round: 1,
+    czarIndex: 0,
+    blackCard: blackDeck[0],
+    blackDeck: blackDeck.slice(1),
+    whiteDeck,
+    players,
+    submissions: [],    // { playerId, cards: [] }
+    winnerId: null,
+  };
+
+  const { error } = await sbClient.from('game_rooms').insert({ code: roomCode, state });
+  if (error) return showError('lobby-error', 'Error creating room: ' + error.message);
+
+  gameState = state;
+  showWaiting();
+  subscribeToRoom();
+}
+
+// ── JOIN GAME ──
+async function joinGame() {
+  if (!initSupabase()) return;
+  myName = document.getElementById('player-name').value.trim();
+  const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+  if (!myName) return showError('lobby-error', 'Enter your name first.');
+  if (code.length !== 4) return showError('lobby-error', 'Enter a 4-letter room code.');
+
+  const { data, error } = await sbClient.from('game_rooms').select('*').eq('code', code).single();
+  if (error || !data) return showError('lobby-error', 'Room not found. Check the code.');
+  if (data.state.phase !== 'waiting') return showError('lobby-error', 'Game already in progress.');
+
+  myPlayerId = crypto.randomUUID();
+  roomCode = code;
+  isHost = false;
+
+  const state = data.state;
+  const hand = state.whiteDeck.splice(0, HAND_SIZE);
+  state.players.push({ id: myPlayerId, name: myName, score: 0, hand, isHost: false });
+
+  await sbClient.from('game_rooms').update({ state }).eq('code', roomCode);
+
+  gameState = state;
+  showWaiting();
+  subscribeToRoom();
+}
+
+// ── SUBSCRIBE ──
+function subscribeToRoom() {
+  channel = supabase
+    .channel('room-' + roomCode)
+    .on('postgres_changes', {
+      event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `code=eq.${roomCode}`
+    }, payload => {
+      gameState = payload.new.state;
+      render();
+    })
+    .subscribe();
+}
+
+// ── UPDATE STATE (host only writes) ──
+async function pushState() {
+  await sbClient.from('game_rooms').update({ state: gameState }).eq('code', roomCode);
+}
+
+// ── WAITING ROOM ──
+function showWaiting() {
+  document.getElementById('display-room-code').textContent = roomCode;
+  renderWaiting();
+  showScreen('waiting');
+}
+
+function renderWaiting() {
+  if (!gameState) return;
+  const list = document.getElementById('waiting-player-list');
+  list.innerHTML = gameState.players.map(p => `
+    <div class="player-chip">
+      <span class="dot"></span>
+      <span>${p.name}</span>
+      ${p.isHost ? '<span class="czar-badge">HOST</span>' : ''}
+    </div>
+  `).join('');
+
+  const startBtn = document.getElementById('start-btn');
+  const waitStatus = document.getElementById('waiting-status');
+  if (isHost) {
+    startBtn.style.display = 'block';
+    waitStatus.textContent = gameState.players.length < 3
+      ? `Need at least 3 players (${gameState.players.length}/3 joined)`
+      : 'Ready to start!';
+    startBtn.disabled = gameState.players.length < 2;
+  }
+}
+
+// ── START GAME ──
+async function startGame() {
+  if (!isHost) return;
+  gameState.phase = 'playing';
+  gameState.czarIndex = 0;
+  await pushState();
+}
+
+// ── RENDER DISPATCHER ──
+function render() {
+  if (!gameState) return;
+  if (gameState.phase === 'waiting') {
+    renderWaiting();
+    return;
+  }
+
+  if (document.getElementById('game').style.display !== 'flex' &&
+      !document.getElementById('game').classList.contains('active')) {
+    showScreen('game');
+  }
+
+  const me = gameState.players.find(p => p.id === myPlayerId);
+  const czar = gameState.players[gameState.czarIndex % gameState.players.length];
+  const isCzar = czar?.id === myPlayerId;
+
+  // top bar
+  document.getElementById('game-room-code').textContent = roomCode;
+  document.getElementById('round-num').textContent = gameState.round;
+  document.getElementById('score-display').innerHTML = gameState.players
+    .map(p => `<span class="score-item">${p.name}: <span>${p.score} ★</span></span>`).join('');
+
+  // black card
+  const bc = gameState.blackCard;
+  document.getElementById('black-card-text').textContent = bc?.text || '';
+  document.getElementById('pick-count').textContent = bc?.pick || 1;
+
+  // player counts
+  const nonCzarCount = gameState.players.length - 1;
+  document.getElementById('player-count').textContent = nonCzarCount;
+  document.getElementById('submit-count').textContent = gameState.submissions.length;
+
+  // status box
+  renderStatus(isCzar, czar, me);
+
+  // submissions
+  renderSubmissions(isCzar);
+
+  // hand
+  renderHand(isCzar, me, bc);
+
+  // action bar
+  renderActionBar(isCzar, me, bc);
+
+  // results overlay
+  if (gameState.phase === 'results') showResults();
+}
+
+function renderStatus(isCzar, czar, me) {
+  const box = document.getElementById('status-box');
+  const submitted = gameState.submissions.find(s => s.playerId === myPlayerId);
+  const nonCzarCount = gameState.players.length - 1;
+
+  if (gameState.phase === 'playing') {
+    if (isCzar) {
+      box.innerHTML = `<strong>You are the Card Czar! ♠</strong><br>Sit back while everyone plays their cards. (${gameState.submissions.length}/${nonCzarCount} submitted)`;
+    } else if (submitted) {
+      box.innerHTML = `<strong>Card submitted!</strong><br>Waiting for others... (${gameState.submissions.length}/${nonCzarCount})`;
+    } else {
+      box.innerHTML = `<strong>${czar?.name}</strong> is the Card Czar.<br>Pick ${gameState.blackCard?.pick || 1} card(s) from your hand.`;
+    }
+  } else if (gameState.phase === 'judging') {
+    if (isCzar) {
+      box.innerHTML = `<strong>Pick the funniest answer!</strong> Tap a card to select it as the winner.`;
+    } else {
+      box.innerHTML = `Waiting for <strong>${czar?.name}</strong> to pick the winner...`;
+    }
+  }
+}
+
+function renderSubmissions(isCzar) {
+  const area = document.getElementById('submitted-cards-display');
+  if (gameState.phase === 'playing') {
+    // show face-down placeholders
+    area.innerHTML = gameState.submissions.map(() =>
+      `<div class="white-card face-down"></div>`
+    ).join('');
+  } else if (gameState.phase === 'judging' || gameState.phase === 'results') {
+    area.innerHTML = gameState.submissions.map((s, i) => {
+      const isWinner = gameState.phase === 'results' && gameState.winnerId === s.playerId;
+      const player = gameState.players.find(p => p.id === s.playerId);
+      const cardClass = isWinner ? 'winner-card' : (isCzar && gameState.phase === 'judging' ? 'selectable' : '');
+      const cards = s.cards.join(' / ');
+      return `<div class="white-card ${cardClass}" onclick="${isCzar && gameState.phase === 'judging' ? `pickWinner('${s.playerId}')` : ''}" >
+        ${cards}
+        ${gameState.phase === 'results' ? `<div class="player-tag">${player?.name || ''}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderHand(isCzar, me, bc) {
+  const area = document.getElementById('hand-cards');
+  if (isCzar || !me) {
+    area.innerHTML = isCzar ? `<div class="czar-label">♠ You are the Card Czar this round</div>` : '';
+    return;
+  }
+
+  const alreadySubmitted = !!gameState.submissions.find(s => s.playerId === myPlayerId);
+  const pickN = bc?.pick || 1;
+
+  area.innerHTML = (me.hand || []).map((card, i) => {
+    const isSelected = selectedCards.includes(i);
+    return `<div class="white-card selectable ${isSelected ? 'selected' : ''}"
+      onclick="toggleCard(${i})">${card}</div>`;
+  }).join('');
+
+  document.getElementById('hand-status').textContent = alreadySubmitted
+    ? 'Submitted ✓'
+    : `Pick ${pickN} card${pickN > 1 ? 's' : ''} (${selectedCards.length}/${pickN} selected)`;
+}
+
+function renderActionBar(isCzar, me, bc) {
+  const bar = document.getElementById('action-bar');
+  bar.innerHTML = '';
+  if (isCzar || !me) return;
+
+  const alreadySubmitted = !!gameState.submissions.find(s => s.playerId === myPlayerId);
+  const pickN = bc?.pick || 1;
+
+  if (!alreadySubmitted && gameState.phase === 'playing') {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = `Play Card${pickN > 1 ? 's' : ''}`;
+    btn.disabled = selectedCards.length !== pickN;
+    btn.onclick = submitCards;
+    bar.appendChild(btn);
+  }
+}
+
+// ── CARD SELECTION ──
+function toggleCard(i) {
+  const me = gameState.players.find(p => p.id === myPlayerId);
+  const pickN = gameState.blackCard?.pick || 1;
+  if (gameState.submissions.find(s => s.playerId === myPlayerId)) return;
+  if (gameState.phase !== 'playing') return;
+
+  if (selectedCards.includes(i)) {
+    selectedCards = selectedCards.filter(x => x !== i);
+  } else {
+    if (selectedCards.length < pickN) selectedCards.push(i);
+  }
+  renderHand(false, me, gameState.blackCard);
+  renderActionBar(false, me, gameState.blackCard);
+}
+
+// ── SUBMIT CARDS ──
+async function submitCards() {
+  const me = gameState.players.find(p => p.id === myPlayerId);
+  if (!me) return;
+  const pickN = gameState.blackCard?.pick || 1;
+  if (selectedCards.length !== pickN) return;
+
+  const cards = selectedCards.map(i => me.hand[i]);
+
+  // remove from hand
+  me.hand = me.hand.filter((_, i) => !selectedCards.includes(i));
+
+  gameState.submissions.push({ playerId: myPlayerId, cards });
+  selectedCards = [];
+
+  // check if everyone submitted
+  const nonCzarCount = gameState.players.length - 1;
+  if (gameState.submissions.length >= nonCzarCount) {
+    gameState.phase = 'judging';
+    gameState.submissions = shuffle(gameState.submissions); // anonymise order
+  }
+
+  await pushState();
+}
+
+// ── CZAR PICKS WINNER ──
+async function pickWinner(winnerId) {
+  if (!isHost && gameState.players[gameState.czarIndex % gameState.players.length]?.id !== myPlayerId) return;
+  const czar = gameState.players[gameState.czarIndex % gameState.players.length];
+  if (czar?.id !== myPlayerId) return;
+
+  const winner = gameState.players.find(p => p.id === winnerId);
+  if (winner) winner.score += 1;
+
+  gameState.winnerId = winnerId;
+  gameState.phase = 'results';
+  await pushState();
+}
+
+// ── SHOW RESULTS ──
+function showResults() {
+  const overlay = document.getElementById('results-overlay');
+  const winner = gameState.players.find(p => p.id === gameState.winnerId);
+  const submission = gameState.submissions.find(s => s.playerId === gameState.winnerId);
+
+  document.getElementById('results-winner-name').textContent = winner?.name || '';
+  document.getElementById('results-card-text').textContent = submission?.cards.join(' / ') || '';
+  document.getElementById('results-scores').innerHTML = gameState.players
+    .map(p => `<span class="score-item">${p.name}: <span>${p.score} ★</span></span>`).join('');
+
+  const nextBtn = document.getElementById('results-next-btn');
+  const czar = gameState.players[gameState.czarIndex % gameState.players.length];
+  nextBtn.style.display = (czar?.id === myPlayerId || isHost) ? 'block' : 'none';
+
+  overlay.classList.add('active');
+}
+
+// ── NEXT ROUND ──
+async function nextRound() {
+  document.getElementById('results-overlay').classList.remove('active');
+
+  if (gameState.round >= MAX_ROUNDS) {
+    // Game over — find overall winner
+    const topScore = Math.max(...gameState.players.map(p => p.score));
+    const champion = gameState.players.find(p => p.score === topScore);
+    toast(`🏆 Game Over! ${champion?.name} wins with ${topScore} points!`);
+    // reset to waiting
+    gameState.phase = 'waiting';
+    gameState.round = 1;
+    gameState.submissions = [];
+    gameState.winnerId = null;
+    await pushState();
+    showWaiting();
+    return;
+  }
+
+  // Deal new cards to all players
+  gameState.players.forEach(p => {
+    const needed = HAND_SIZE - (p.hand?.length || 0);
+    if (needed > 0) {
+      const drawn = gameState.whiteDeck.splice(0, needed);
+      p.hand = [...(p.hand || []), ...drawn];
+    }
+  });
+
+  // Next czar
+  gameState.czarIndex = (gameState.czarIndex + 1) % gameState.players.length;
+
+  // Next black card
+  const nextBlack = gameState.blackDeck.shift();
+  if (!nextBlack) {
+    // Reshuffle if needed
+    const reshuffled = shuffle(BLACK_CARDS);
+    gameState.blackDeck = reshuffled.slice(1);
+    gameState.blackCard = reshuffled[0];
+  } else {
+    gameState.blackCard = nextBlack;
+  }
+
+  gameState.round += 1;
+  gameState.submissions = [];
+  gameState.winnerId = null;
+  gameState.phase = 'playing';
+
+  await pushState();
+}
+
+// ── BOOT ──
+render();
+</script>
+</body>
+</html>
