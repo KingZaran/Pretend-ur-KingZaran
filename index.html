@@ -455,16 +455,6 @@
 </div>
 
 <script>
-// Expose game functions globally for onclick handlers
-// (needed when running inside sandboxed iframes)
-window.hostGame = function() { return hostGame(); };
-window.joinGame = function() { return joinGame(); };
-window.startGame = function() { return startGame(); };
-window.nextRound = function() { return nextRound(); };
-window.toggleCard = function(i) { return toggleCard(i); };
-window.pickWinner = function(id) { return pickWinner(id); };
-window.submitCards = function() { return submitCards(); };
-
 // ════════════════════════════════════════
 //  ██████╗ ██████╗ ███╗   ██╗███████╗
 // ██╔════╝██╔═══██╗████╗  ██║██╔════╝
@@ -1067,6 +1057,15 @@ async function nextRound() {
 
 // ── BOOT ──
 render();
+
+// Expose functions globally for onclick= attributes
+window.hostGame = hostGame;
+window.joinGame = joinGame;
+window.startGame = startGame;
+window.nextRound = nextRound;
+window.toggleCard = toggleCard;
+window.pickWinner = pickWinner;
+window.submitCards = submitCards;
 </script>
 </body>
 </html>
