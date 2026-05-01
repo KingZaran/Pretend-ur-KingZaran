@@ -345,6 +345,10 @@ const WHITE_CARDS = [
   "Likes Freya Small",
   "Likes Isla (again)",
   "Is an ABSOLUTE CURRY MUNCHER",
+  "Everyone is gooning",
+  "Everyone is oiled up",
+  "Has Ian Miller showing off his feet",
+  "Whoever loses gets 50,000 volts to the nipples",
   
   // Family Edition
   "A big wet kiss from Great Aunt Sharon",
