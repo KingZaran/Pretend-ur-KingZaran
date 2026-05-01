@@ -1,6 +1,9 @@
 const BLACK_CARDS = [
   // From Family Edition
   { text: "I don't really know what my mom's job is, but I think it has something to do with ____.", pick: 1 },
+  { text: "Tarn ____ and ____.", pick: 2 },
+  { text: "Isaac likes doing ____", pick: 1 },
+  { text: "Georgina Harris is really ____ and loves to ____", pick: 2 },
   { text: "Papa, come quickly! There, in the garden! Do you see ____? Tell me you see it, Papa!", pick: 1 },
   { text: "Attention students! Principal Butthead is at home recovering from ____. We hope he'll be back soon.", pick: 1 },
   { text: "I'm sorry, Jordan, but that's not an acceptable Science Fair project. That's just ____.", pick: 1 },
