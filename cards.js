@@ -22,6 +22,7 @@ const BLACK_CARDS = [
   { text: "Vandana Vasudevan is really ____ and loves to ____", pick: 2 },
   { text: "Ian Miller is really ____ and loves to ____", pick: 2 },
   { text: "Elaine Watson is really ____ and loves to ____", pick: 2 },
+  
   // From Family Edition
   { text: "I don't really know what my mom's job is, but I think it has something to do with ____.", pick: 1 },
   { text: "Papa, come quickly! There, in the garden! Do you see ____? Tell me you see it, Papa!", pick: 1 },
@@ -329,6 +330,22 @@ const BLACK_CARDS = [
 ];
 
 const WHITE_CARDS = [
+  // Custom Cards
+  "= Bowling ball",
+  "= Curry muncher",
+  "Reeks of shit",
+  "Is a femboy",
+  "Goons to Minecraft Steve",
+  "Is built like a cube",
+  "Is built like a 1 by 1 lego brick",
+  "Goons to Hornet",
+  "Goons to The Knight",
+  "Has fungly cheesy feet",
+  "LOVES Minurazi",
+  "Likes Freya Small",
+  "Likes Isla (again)",
+  "Is an ABSOLUTE CURRY MUNCHER",
+  
   // Family Edition
   "A big wet kiss from Great Aunt Sharon",
   "A cloud that rains diarrhea",
