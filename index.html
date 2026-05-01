@@ -407,16 +407,6 @@
       <input type="text" id="player-name" placeholder="Enter your name" maxlength="20" autocomplete="off">
     </div>
 
-    <div class="input-group">
-      <label>Win condition</label>
-      <select id="win-target" style="background:var(--grey);border:1px solid #333;border-radius:6px;color:var(--white);font-family:'DM Mono',monospace;font-size:0.95rem;padding:0.75rem 1rem;outline:none;width:100%;cursor:pointer;">
-        <option value="5">First to 5 points</option>
-        <option value="7">First to 7 points</option>
-        <option value="10" selected>First to 10 points</option>
-        <option value="15">First to 15 points</option>
-        <option value="999">Endless (no limit)</option>
-      </select>
-    </div>
     <button class="btn" onclick="hostGame()">Host a Game</button>
 
     <div class="divider">or join existing</div>
@@ -454,6 +444,16 @@
   </div>
 
   <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:0.75rem;">
+    <div id="win-condition-group" style="display:none;">
+      <label style="font-family:'DM Mono',monospace;font-size:0.7rem;letter-spacing:0.15em;color:var(--light);text-transform:uppercase;display:block;margin-bottom:0.4rem;">Win Condition</label>
+      <select id="win-target" style="background:var(--grey);border:1px solid #333;border-radius:6px;color:var(--white);font-family:'DM Mono',monospace;font-size:0.95rem;padding:0.75rem 1rem;outline:none;width:100%;cursor:pointer;">
+        <option value="5">First to 5 points</option>
+        <option value="7">First to 7 points</option>
+        <option value="10" selected>First to 10 points</option>
+        <option value="15">First to 15 points</option>
+        <option value="999">Endless (no limit)</option>
+      </select>
+    </div>
     <button class="btn" id="start-btn" onclick="startGame()" style="display:none">Start Game</button>
     <p class="loading" id="waiting-status"></p>
     <button class="btn secondary" onclick="leaveGame()" style="margin-top:0.5rem;">Leave Room</button>
@@ -498,6 +498,7 @@
   </div>
 </div>
 
+<script src="cards.js"></script>
 <script>
 // ════════════════════════════════════════
 //  ██████╗ ██████╗ ███╗   ██╗███████╗
@@ -517,155 +518,6 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const HAND_SIZE = 7;   // cards per player hand
 const MAX_ROUNDS = 10; // rounds before game ends
-
-// ─────────────────────────────────────────
-// 🃏 BLACK CARDS — Add your own!
-// Use ____ to mark where answers go.
-// "pick" = how many white cards players must play.
-// ─────────────────────────────────────────
-
-const BLACK_CARDS = [
-  { text: "What's that smell?", pick: 1 },
-  { text: "What ended my last relationship?", pick: 1 },
-  { text: "In a pinch, ____ can be used as a condom.", pick: 1 },
-  { text: "I got 99 problems but ____ ain't one.", pick: 1 },
-  { text: "What's the next Happy Meal toy?", pick: 1 },
-  { text: "What do old people smell like?", pick: 1 },
-  { text: "What's a girl's best friend?", pick: 1 },
-  { text: "What don't you want to find in your cereal?", pick: 1 },
-  { text: "What's my secret power?", pick: 1 },
-  { text: "During sex, I like to think about ____.", pick: 1 },
-  { text: "What's always a better idea at the time?", pick: 1 },
-  { text: "What's the most emo?", pick: 1 },
-  { text: "Instead of coal, Santa now gives bad kids ____.", pick: 1 },
-  { text: "____ is a lot better when you're drunk.", pick: 1 },
-  { text: "What did I get for Christmas?", pick: 1 },
-  { text: "What's the new black?", pick: 1 },
-  { text: "What's the next superhero power?", pick: 1 },
-  { text: "Science still cannot explain ____.", pick: 1 },
-  { text: "What does the 'S' in 'Jesus H. Christ' stand for?", pick: 1 },
-  { text: "What would grandma find disturbing, yet oddly charming?", pick: 1 },
-  { text: "Life was never the same after ____.", pick: 1 },
-  { text: "What's in the suitcase in Pulp Fiction?", pick: 1 },
-  { text: "____, ____ — that's my secret to success.", pick: 2 },
-  { text: "I drink to forget ____.", pick: 1 },
-  { text: "What's that sound?", pick: 1 },
-  { text: "What's the most intimidating thing about me?", pick: 1 },
-  { text: "Why am I sticky?", pick: 1 },
-  { text: "When I'm in jail, I'll have ____ to keep me company.", pick: 1 },
-  { text: "What's the gift that keeps on giving?", pick: 1 },
-  { text: "Make a haiku. ____, ____, ____.", pick: 3 },
-];
-
-// ─────────────────────────────────────────
-// 🃏 WHITE CARDS — Add your own!
-// ─────────────────────────────────────────
-
-const WHITE_CARDS = [
-  "A disappointing birthday party",
-  "Getting hit by a car",
-  "Puppies!",
-  "A really sour lemon",
-  "Flying sex snakes",
-  "Object permanence",
-  "Wearing underwear inside-out",
-  "The forbidden fruit",
-  "A tiny horse",
-  "Catastrophic failure",
-  "Grandma",
-  "Being on fire",
-  "The glass ceiling",
-  "Poor life decisions",
-  "A second family",
-  "Dry heaving",
-  "Crying yourself to sleep",
-  "Blaming the victim",
-  "An erection that just won't quit",
-  "My relationship with God",
-  "Vigorous jazz hands",
-  "Natural male enhancement",
-  "The milk man",
-  "Feelings",
-  "Dead parents",
-  "White privilege",
-  "Passive aggression",
-  "The entire Wikipedia article on ducks",
-  "The terrorists",
-  "Schadenfreude",
-  "A windmill full of corpses",
-  "Exactly what you'd expect",
-  "Eating an entire pizza by myself",
-  "Sweet, sweet vengeance",
-  "A can of whoop-ass",
-  "Giving 110%",
-  "Drinking alone",
-  "Sniffing glue",
-  "A gentle caress",
-  "Uncontrollable crying",
-  "The invisible hand",
-  "Praying the gay away",
-  "Poorly-timed Holocaust jokes",
-  "Promiscuous but safe sex",
-  "Fear itself",
-  "Keanu Reeves",
-  "Stephen Hawking talking dirty",
-  "The hard nipple of justice",
-  "Friendly fire",
-  "Your mom",
-  "A lifetime of regret",
-  "Multiple stab wounds",
-  "Looking good, feeling good",
-  "Twitter",
-  "Screaming and throwing up",
-  "Smegma",
-  "The blood of Christ",
-  "Some sort of cancer",
-  "A surprise party",
-  "Getting naked and watching Nickelodeon",
-  "Eating the last of the ice cream",
-  "A dog",
-  "Being marginalized",
-  "Hot cheese",
-  "Explosions",
-  "Baby Jesus",
-  "Sexting",
-  "The inevitable heat death of the universe",
-  "Abstinence",
-  "Actual witchcraft",
-  "Nickelback",
-  "Taking a photograph",
-  "A salty surprise",
-  "Powerful thighs",
-  "Her Majesty, Queen Elizabeth II",
-  "Repression",
-  "Not having sex",
-  "The G-spot",
-  "Heteronormativity",
-  "Ryan Gosling",
-  "A subscription to a video game",
-  "Gluten",
-  "Pooping back and forth forever",
-  "Genghis Khan",
-  "Bees?",
-  "The miracle of childbirth",
-  "Exactly zero dollars",
-  "RoboCop",
-  "Chainsaws for hands",
-  "Refusing to take off your sunglasses",
-  "Forgetting everything",
-  "The entire nation of Portugal",
-  "Hot pockets",
-  "A big black man",
-  "Waiting til marriage",
-  "Dropping a deuce",
-  "Running away",
-  "A defective condom",
-  "Being a boss",
-  "Surprise sex",
-  "A moment of silence",
-  "Letting yourself go",
-  "Batman",
-];
 
 // ─────────────────────────────────────────
 // 🛠 GAME ENGINE — Don't need to edit below
@@ -739,7 +591,6 @@ async function hostGame() {
     hand: whiteDeck.splice(0, HAND_SIZE), isHost: true
   }];
 
-  const winTarget = parseInt(document.getElementById('win-target')?.value || '10');
   const state = {
     room: roomCode,
     phase: 'waiting',
@@ -751,7 +602,7 @@ async function hostGame() {
     players,
     submissions: [],
     winnerId: null,
-    winTarget,
+    winTarget: 10,
   };
 
   try {
@@ -912,13 +763,16 @@ function renderWaiting() {
   const count = gameState.players.length;
   const wt = gameState.winTarget || 10;
   const wtLabel = wt >= 999 ? 'Endless mode' : `First to ${wt} points wins`;
+  const winGroup = document.getElementById('win-condition-group');
   if (isHost) {
+    if (winGroup) winGroup.style.display = 'block';
     startBtn.style.display = 'block';
     startBtn.disabled = count < 3;
     waitStatus.textContent = count < 3
       ? `Need at least 3 players (${count}/3 joined) · ${wtLabel}`
       : `${count} player(s) ready · ${wtLabel}`;
   } else {
+    if (winGroup) winGroup.style.display = 'none';
     waitStatus.textContent = `${count} player(s) · ${wtLabel} · Waiting for host to start...`;
   }
 }
@@ -926,6 +780,9 @@ function renderWaiting() {
 // ── START GAME ──
 async function startGame() {
   if (!isHost) return;
+  // Read win target from the waiting room selector (host sets it here)
+  const winTarget = parseInt(document.getElementById('win-target')?.value || '10');
+  gameState.winTarget = winTarget;
   gameState.phase = 'playing';
   gameState.czarIndex = 0;
   await pushState();
