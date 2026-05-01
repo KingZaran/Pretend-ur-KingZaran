@@ -12,16 +12,6 @@ const BLACK_CARDS = [
   { text: "Henry likes ____.", pick: 1 },
   { text: "Zak likes ____.", pick: 1 },
   { text: "Michael likes ____.", pick: 1 },
-  { text: "Georgina Harris is really ____ and loves to ____.", pick: 2 },
-  { text: "Sandra West is really ____ and loves to ____.", pick: 2 },
-  { text: "Malcolm West is really ____ and loves to ____.", pick: 2 },
-  { text: "Jacob Maynard is really ____ and loves to ____.", pick: 2 },
-  { text: "Francis Maynard is really ____ and loves to ____.", pick: 2 },
-  { text: "Victoria Vickery is really ____ and loves to ____.", pick: 2 },
-  { text: "Baby Vasudevan is really ____ and loves to ____.", pick: 2 },
-  { text: "Vandana Vasudevan is really ____ and loves to ____.", pick: 2 },
-  { text: "Ian Miller is really ____ and loves to ____.", pick: 2 },
-  { text: "Elaine Watson is really ____ and loves to ____.", pick: 2 },
   
   // From Family Edition
   { text: "I don't really know what my mom's job is, but I think it has something to do with ____.", pick: 1 },
