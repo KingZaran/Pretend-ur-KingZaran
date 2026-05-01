@@ -674,51 +674,80 @@ function subscribeToRoom() {
     })
     .on('presence', { event: 'leave' }, ({ leftPresences }) => {
       if (!gameState) return;
-      leftPresences.forEach(async lp => {
-        const idx = gameState.players.findIndex(p => p.id === lp.playerId);
-        if (idx === -1) return;
-        const leaving = gameState.players[idx];
-        gameState.players.splice(idx, 1);
-        toast(leaving.name + ' disconnected.');
-        if (leaving.hand) gameState.whiteDeck.push(...leaving.hand);
+      leftPresences.forEach(lp => {
+        // Wait 3s before acting — a refresh causes a momentary leave that resolves itself.
+        // After the delay, re-check the DB to confirm the player is truly gone.
+        setTimeout(async () => {
+          // Re-fetch fresh state from DB
+          const { data } = await sbClient.from('game_rooms').select('state').eq('code', roomCode).single();
+          if (!data) return; // room deleted already
 
-        if (gameState.players.length === 0) {
-          await sbClient.from('game_rooms').delete().eq('code', roomCode);
-          return;
-        }
+          // Check if the player came back (rejoined via refresh)
+          const stillInRoom = data.state.players.find(p => p.id === lp.playerId);
+          if (stillInRoom) return; // They refreshed and rejoined — do nothing
 
-        // If the leaver was the czar, advance to next valid czar
-        const czar = gameState.players[gameState.czarIndex % Math.max(gameState.players.length, 1)];
-        if (czar === undefined || leaving.id === czar?.id) {
-          // clamp czarIndex to valid range
+          // They are genuinely gone — act on the fresh state
+          gameState = data.state;
+          const idx = gameState.players.findIndex(p => p.id === lp.playerId);
+          if (idx !== -1) return; // Already removed by someone else
+
+          // Player truly left — but they're already not in the DB state (they left cleanly
+          // via leaveGame which already pushed state), so just re-render
+          toast(lp.name + ' disconnected.');
+
+          // Fetch again just in case leaveGame already handled it
+          const { data: latest } = await sbClient.from('game_rooms').select('state').eq('code', roomCode).single();
+          if (!latest) return;
+
+          const latestIdx = latest.state.players.findIndex(p => p.id === lp.playerId);
+          if (latestIdx === -1) {
+            // Already removed — just sync state and re-render
+            gameState = latest.state;
+            render();
+            return;
+          }
+
+          // Still in DB state — we need to remove them (tab closed without leaveGame firing)
+          gameState = latest.state;
+          const leaving = gameState.players[latestIdx];
+          gameState.players.splice(latestIdx, 1);
+          if (leaving.hand) gameState.whiteDeck.push(...leaving.hand);
+
+          if (gameState.players.length === 0) {
+            await sbClient.from('game_rooms').delete().eq('code', roomCode);
+            return;
+          }
+
+          // Fix czar if they were the czar
           gameState.czarIndex = gameState.czarIndex % Math.max(gameState.players.length, 1);
-          if (gameState.phase === 'playing' || gameState.phase === 'judging') {
-            // Remove submissions from the leaving player and restart the round cleanly
-            gameState.submissions = gameState.submissions.filter(s => s.playerId !== leaving.id);
-            // If we were in judging and czar left, go back to playing so new czar can judge
-            if (gameState.phase === 'judging') gameState.phase = 'playing';
-            toast('The Card Czar left — round restarting with new Czar.');
+          const currentCzar = gameState.players[gameState.czarIndex];
+          if (!currentCzar || leaving.id === currentCzar.id) {
+            if (gameState.phase === 'playing' || gameState.phase === 'judging') {
+              gameState.submissions = gameState.submissions.filter(s => s.playerId !== leaving.id);
+              if (gameState.phase === 'judging') gameState.phase = 'playing';
+              toast('The Card Czar left — round restarting with new Czar.');
+            }
           }
-        }
 
-        // If the leaver was host, assign a new one
-        if (leaving.isHost && gameState.players.length > 0) {
-          const newHost = gameState.players[Math.floor(Math.random() * gameState.players.length)];
-          newHost.isHost = true;
-          if (gameState.phase !== 'waiting' && gameState.phase !== 'playing' && gameState.phase !== 'judging') {
-            gameState.phase = 'waiting';
-            gameState.submissions = [];
-            gameState.winnerId = null;
+          // Assign new host if needed
+          if (leaving.isHost && gameState.players.length > 0) {
+            const newHost = gameState.players[Math.floor(Math.random() * gameState.players.length)];
+            newHost.isHost = true;
+            if (gameState.phase !== 'waiting' && gameState.phase !== 'playing' && gameState.phase !== 'judging') {
+              gameState.phase = 'waiting';
+              gameState.submissions = [];
+              gameState.winnerId = null;
+            }
           }
-        }
 
-        // Only the current host pushes the updated state
-        const currentHost = gameState.players.find(p => p.isHost);
-        if (currentHost && currentHost.id === myPlayerId) {
-          isHost = true;
-          saveSession();
-          await pushState();
-        }
+          // Only the current host pushes updated state
+          const currentHost = gameState.players.find(p => p.isHost);
+          if (currentHost && currentHost.id === myPlayerId) {
+            isHost = true;
+            saveSession();
+            await pushState();
+          }
+        }, 3000); // 3 second grace period for refreshes
       });
     })
     .subscribe(async (status) => {
@@ -1265,9 +1294,18 @@ function copyInviteLink() {
 }
 
 // ── CLEANUP ON UNLOAD ──
-window.addEventListener('beforeunload', () => {
-  if (heartbeatInterval) clearInterval(heartbeatInterval);
-  if (channel) sbClient.removeChannel(channel);
+// Use a flag: if the page is navigating away for real (not refreshing),
+// pagehide fires with persisted=false. On refresh, persisted=true briefly.
+// We use visibilitychange + a short delay to avoid kicking refreshing players.
+let pageIsUnloading = false;
+window.addEventListener('beforeunload', () => { pageIsUnloading = true; });
+window.addEventListener('pagehide', (e) => {
+  // e.persisted = true means page went into bfcache (likely refresh/back)
+  // Only do hard cleanup if truly navigating away
+  if (!e.persisted) {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    if (channel) sbClient.removeChannel(channel);
+  }
 });
 
 // ── COOKIE NAME MEMORY ──
