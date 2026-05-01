@@ -640,8 +640,18 @@ async function joinGame() {
 
   const state = data.state;
   const hand = state.whiteDeck.splice(0, HAND_SIZE);
-  state.players.push({ id: myPlayerId, name: myName, score: 0, hand, isHost: false, joinedMidGame: joiningMidGame });
-  if (joiningMidGame) toast('Joined mid-game! You\'ll play from the next card submission.');
+
+  // Check if a ghost entry exists with the same name (disconnected player)
+  // and restore their score if found
+  const ghost = state.disconnectedPlayers?.find(d => d.name.toLowerCase() === myName.toLowerCase());
+  const restoredScore = ghost ? ghost.score : 0;
+  if (ghost) {
+    state.disconnectedPlayers = state.disconnectedPlayers.filter(d => d.name.toLowerCase() !== myName.toLowerCase());
+    toast('Welcome back! Your ' + restoredScore + ' point(s) have been restored.');
+  }
+
+  state.players.push({ id: myPlayerId, name: myName, score: restoredScore, hand, isHost: false, joinedMidGame: joiningMidGame });
+  if (joiningMidGame && !ghost) toast('Joined mid-game! You\'ll play from the next card submission.');
 
   await sbClient.from('game_rooms').update({ state }).eq('code', roomCode);
 
@@ -712,6 +722,12 @@ function subscribeToRoom() {
           const leaving = gameState.players[latestIdx];
           gameState.players.splice(latestIdx, 1);
           if (leaving.hand) gameState.whiteDeck.push(...leaving.hand);
+
+          // Save their score under their name so they can reclaim it on rejoin
+          if (!gameState.disconnectedPlayers) gameState.disconnectedPlayers = [];
+          // Overwrite any previous ghost with the same name
+          gameState.disconnectedPlayers = gameState.disconnectedPlayers.filter(d => d.name.toLowerCase() !== leaving.name.toLowerCase());
+          gameState.disconnectedPlayers.push({ name: leaving.name, score: leaving.score });
 
           if (gameState.players.length === 0) {
             await sbClient.from('game_rooms').delete().eq('code', roomCode);
