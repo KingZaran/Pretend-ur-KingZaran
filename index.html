@@ -822,7 +822,7 @@ function render() {
   const wt = gameState.winTarget || 10;
   document.getElementById('win-target-display').textContent = wt >= 999 ? '∞' : `/${wt}`;
   document.getElementById('score-display').innerHTML = gameState.players
-    .map(p => `<span class="score-item">${p.name}: <span>${p.score} ★</span></span>`).join('');
+    .map(p => `<span class="score-item">${p.name}: <span>${p.score}pts</span></span>`).join('');
 
   // black card
   const bc = gameState.blackCard;
