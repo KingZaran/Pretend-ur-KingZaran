@@ -1,5 +1,4 @@
 <div align="center">
-    <img alt="logo" src="https://imgur.com/g4IjKTz.png" height="128px"/>
     <h1>Pretend You're KingZaran</h1>
 </div>
 
