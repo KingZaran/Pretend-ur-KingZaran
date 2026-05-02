@@ -1,5 +1,6 @@
 <div align="center">
     <h1>Pretend You're KingZaran</h1>
+    <h3>Spin-off of pretend you're xyzzy and cards against humanity</h3>
 </div>
 
 <br>
