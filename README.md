@@ -3,7 +3,6 @@
 </div>
 
 <br>
-
 # Device Previews
 
 ## Desktop PC Webrowser
